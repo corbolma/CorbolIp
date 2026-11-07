@@ -70,13 +70,13 @@ namespace AppIP
             TopMost = true; // il widget sta sotto le finestre: questa deve vedersi subito
             AutoScaleDimensions = new SizeF(96f, 96f);
             AutoScaleMode = AutoScaleMode.Dpi;
-            Font = new Font("Segoe UI", 9f);
+            Font = new Font("Segoe UI", UiFont.Pt); // stessa dimensione del menu
             BackColor = Color.White;
             ClientSize = new Size(440, 300);
             if (icon != null) Icon = icon;
 
             var gray = Color.DimGray;
-            var bigFont = new Font("Segoe UI Semibold", 20f);
+            var bigFont = new Font("Segoe UI Semibold", 20f * UiFont.Scale);
             Label[] values = new Label[3];
             string[] caps = { L.T("Latenza", "Latency"), "Download", "Upload" };
             string[] units = { "ms", "Mbit/s", "Mbit/s" };
@@ -119,6 +119,7 @@ namespace AppIP
 
             Controls.AddRange(new Control[] { lblJitter, bar, lblStatus, lblInfo, lblSrv, txtServer, lnkDefault, btnStart, btnCopy, btnClose });
             ClientSize = new Size(440, 280);
+            Scale(new SizeF(UiFont.Scale, UiFont.Scale)); // coordinate pensate per 9 pt
         }
 
         protected override void OnFormClosing(FormClosingEventArgs e)

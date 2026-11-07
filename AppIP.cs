@@ -240,6 +240,13 @@ namespace AppIP
         }
     }
 
+    // Dimensione del testo di menu e finestre (il predefinito di Windows è 9 pt).
+    static class UiFont
+    {
+        public const float Pt = 11f;
+        public static readonly float Scale = Pt / 9f; // le coordinate delle finestre sono pensate per 9 pt
+    }
+
     // Finestra "Informazioni su AppIP": versione, autore, licenza e link al progetto.
     class AboutForm : Form
     {
@@ -262,7 +269,7 @@ namespace AppIP
             TopMost = true; // il widget sta sotto le finestre: questa deve vedersi subito
             AutoScaleDimensions = new SizeF(96f, 96f);
             AutoScaleMode = AutoScaleMode.Dpi;
-            Font = new Font("Segoe UI", 9f);
+            Font = new Font("Segoe UI", UiFont.Pt);
             BackColor = Color.White;
             ClientSize = new Size(360, 200);
             if (icon != null) Icon = icon;
@@ -290,7 +297,7 @@ namespace AppIP
                 }
             }
             catch { }
-            var title = new Label { Text = "AppIP " + AppVersion.Text, AutoSize = true, Location = new Point(82, 18), Font = new Font("Segoe UI Semibold", 14f) };
+            var title = new Label { Text = "AppIP " + AppVersion.Text, AutoSize = true, Location = new Point(82, 18), Font = new Font("Segoe UI Semibold", 14f * UiFont.Scale) };
             var desc = new Label
             {
                 Text = L.T("IP, nome macchina, DNS, velocità e Wi-Fi sul desktop", "IP, computer name, DNS, speed and Wi-Fi on your desktop"),
@@ -316,6 +323,7 @@ namespace AppIP
             ok.Click += delegate { Close(); };
             AcceptButton = CancelButton = ok;
             Controls.AddRange(new Control[] { pic, title, desc, author, links, ok });
+            Scale(new SizeF(UiFont.Scale, UiFont.Scale));
 
             Load += delegate
             {
@@ -477,6 +485,8 @@ namespace AppIP
                 L.Set(ReadSetting("lang"));
 
             var menu = new ContextMenuStrip();
+            // Font più grande del predefinito (9 pt); i sottomenu e le voci aggiunte dopo lo ereditano
+            menu.Font = new Font("Segoe UI", UiFont.Pt);
             menu.Items.Add(new ToolStripMenuItem("AppIP " + AppVersion.Text) { Enabled = false });
             // Compare solo quando c'è una versione più recente
             miUpdateAvail = new ToolStripMenuItem("", null, delegate { OfferUpdate(); }) { Visible = false };
