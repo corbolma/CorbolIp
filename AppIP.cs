@@ -505,6 +505,10 @@ namespace AppIP
                     () => speedServer.Length > 0 ? speedServer : SpeedTestForm.DefaultServer,
                     v => { speedServer = v; SaveSettings(); });
             }));
+            menu.Items.Add(Mi("Diagnosi rete...", "Network diagnostics...", delegate
+            {
+                DiagnosticsForm.ShowOnce(tray.Icon, DiagSnapshotNow, demo);
+            }));
             menu.Items.Add(new ToolStripSeparator());
 
             miAdapters = Mi("Schede di rete", "Network adapters", null);
@@ -1444,6 +1448,16 @@ namespace AppIP
                 if (wl.Length > 0) sb.AppendLine("Wi-Fi:   " + wl);
             }
             return sb.ToString();
+        }
+
+        // Dati aggiornati per la diagnosi: la scheda principale si sceglie fra tutte, anche quelle nascoste nel widget
+        DiagSnapshot DiagSnapshotNow()
+        {
+            RefreshInfo();
+            var p = allLines.FirstOrDefault(l => l.HasGateway && !l.IsVpn && !l.IsVirtual)
+                 ?? allLines.FirstOrDefault(l => l.HasGateway && !l.IsVpn)
+                 ?? allLines.FirstOrDefault(l => !l.IsVpn && !l.IsVirtual);
+            return new DiagSnapshot { Primary = p, Vpn = vpn, Dns = p != null && p.Dns != "-" ? p.Dns : "", NetText = BuildText };
         }
 
         void CopyAll()
