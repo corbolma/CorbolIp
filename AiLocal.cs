@@ -519,10 +519,20 @@ namespace AppIP
             if (Crashes >= MaxCrashes)
                 return L.F("Assistente locale spento: si è chiuso all'improvviso {0} volte. Riattivalo dalle impostazioni, magari con un modello più piccolo o senza GPU.",
                            "Local assistant turned off: it closed unexpectedly {0} times. Turn it back on in the settings, perhaps with a smaller model or without the GPU.", MaxCrashes);
-            if (ConfiguredModelPath() == null || !AiDownloader.LlamaReady(AiSettings.LocalVariant))
+            if (ConfiguredModelPath() == null || !AiDownloader.LlamaReady(AiSettings.LocalVariant == "auto" ? "cpu" : AiSettings.LocalVariant))
                 return L.T("L'assistente locale non è ancora scaricato: completa il download dalle impostazioni.",
                            "The local assistant is not downloaded yet: finish the download in the settings.");
             return null;
+        }
+
+        // "auto": scheda video (Vulkan) se il pacchetto c'è, processore se la GPU ha già fatto cadere llama-server
+        // in questa sessione. Sulla scheda integrata di un portatile la GPU scrive circa 3 volte più in fretta.
+        volatile bool gpuFailed;
+
+        static string ResolveVariant(string setting, bool gpuFailed)
+        {
+            if (setting != "auto") return setting;
+            return !gpuFailed && AiDownloader.LlamaReady("vulkan") ? "vulkan" : "cpu";
         }
 
         // ---- Richiesta ----
@@ -537,7 +547,7 @@ namespace AppIP
             for (int attempt = 0; ; attempt++)
             {
                 OpenAiProvider p;
-                try { p = EnsureRunning(cancel); }
+                try { p = EnsureRunning(cancel, ResolveVariant(AiSettings.LocalVariant, gpuFailed)); }
                 catch (OperationCanceledException) { return new AiResult { Cancelled = true }; }
                 catch (Exception ex) { return new AiResult { Error = ex.Message }; }
 
@@ -545,9 +555,15 @@ namespace AppIP
                 lastUse = DateTime.Now;
                 try { res = p.Run(req, onText, cancel); }
                 finally { busy = false; lastUse = DateTime.Now; }
-                // Chiuso all'improvviso prima di scrivere qualcosa (capita di rado alla prima richiesta a freddo):
-                // si riavvia e si riprova una volta, senza disturbare l'utente
-                if (attempt == 0 && !res.Cancelled && res.Error != null && res.Text.Length == 0 && !Running) continue;
+                // Chiuso all'improvviso (capita di rado, a volte per il driver della scheda video): si riavvia e si
+                // rifà la richiesta una volta, sul processore se stava usando la GPU in modalità automatica.
+                // OnRestart permette a chi mostra il testo di cancellare la risposta interrotta.
+                if (attempt == 0 && !res.Cancelled && res.Error != null && !Running)
+                {
+                    if (variant == "vulkan" && AiSettings.LocalVariant == "auto") gpuFailed = true;
+                    if (req.OnRestart != null) req.OnRestart();
+                    continue;
+                }
                 break;
             }
 

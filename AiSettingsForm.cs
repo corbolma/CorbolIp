@@ -78,7 +78,7 @@ namespace AppIP
                 cbLocalModel.Items.Add(new Item(m.Id, m.Name + " · " + AiDownloader.FormatBytes(m.Size) + (m == rec ? " · " + L.T("consigliato", "recommended") : "")));
             Row(localCtl, L.T("Modello:", "Model:"), cbLocalModel, L0 + 18, y);
             y += 30;
-            chkGpu = new CheckBox { Text = L.T("Usa la scheda video (GPU)", "Use the graphics card (GPU)"), AutoSize = true, Location = new Point(L1, y) };
+            chkGpu = new CheckBox { Text = L.T("Usa la scheda video (GPU), se dà problemi passa al processore", "Use the graphics card (GPU), falls back to the processor"), AutoSize = true, Location = new Point(L1, y) };
             localCtl.Add(chkGpu);
             y += 26;
             lblLocal = Note("", L1, y, W, 40);
@@ -173,7 +173,7 @@ namespace AppIP
             rLocal.Checked = !rOpenAi.Checked && !rClaude.Checked;
             string lm = AiSettings.LocalModel;
             cbLocalModel.SelectedIndex = Math.Max(0, cbLocalModel.Items.Cast<Item>().ToList().FindIndex(i => i.Id == lm));
-            chkGpu.Checked = AiSettings.LocalVariant == "vulkan";
+            chkGpu.Checked = AiSettings.LocalVariant != "cpu";
             txtClaudeKey.Text = AiSettings.ClaudeKey;
             cbClaudeModel.Text = AiSettings.ClaudeModel;
             string eff = AiSettings.ClaudeEffort;
@@ -232,15 +232,18 @@ namespace AppIP
             return AiCatalog.Find(it != null ? it.Id : AiCatalog.Recommended().Id) ?? AiCatalog.Recommended();
         }
 
-        string SelectedVariant() { return chkGpu.Checked ? "vulkan" : "cpu"; }
+        // Variante da salvare ("auto" = GPU con riserva) e pacchetto di llama.cpp da scaricare
+        string SelectedVariant() { return chkGpu.Checked ? "auto" : "cpu"; }
+        string PackageVariant() { return chkGpu.Checked ? "vulkan" : "cpu"; }
 
         void UpdateLocal()
         {
             if (downloader.Busy) return;
             var m = SelectedModel();
-            string v = SelectedVariant();
+            string v = PackageVariant();
             string mp = AiDownloader.ModelPath(m);
-            bool llama = AiDownloader.LlamaReady(v);
+            // con la GPU basta anche il pacchetto per processore (si userà quello); si scarica Vulkan solo se manca tutto
+            bool llama = AiDownloader.LlamaReady(v) || (chkGpu.Checked && AiDownloader.LlamaReady("cpu"));
             string why = AiCatalog.Unsuitable(m);
             bar.Visible = false;
             btnDownload.Text = L.T("Scarica", "Download");
@@ -271,7 +274,7 @@ namespace AppIP
             bar.Visible = true;
             lblLocal.ForeColor = Grey;
             lblLocal.Text = L.T("Avvio dello scaricamento...", "Starting the download...");
-            downloader.Start(SelectedModel(), SelectedVariant());
+            downloader.Start(SelectedModel(), PackageVariant());
         }
 
         void OnProgress(AiDownloadStatus st)

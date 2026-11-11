@@ -510,6 +510,23 @@ namespace AppIP
                 DiagnosticsForm.ShowOnce(tray.Icon, DiagSnapshotNow, demo);
             }));
             menu.Items.Add(Mi("Assistente AI...", "AI assistant...", delegate { AiSettingsForm.ShowOnce(tray.Icon, null); }));
+            var miEvents = Mi("Registro eventi", "Event log", null);
+            Toggle(miEvents, "Registra gli eventi di rete", "Record network events", () => NetEvents.Enabled, v =>
+            {
+                if (!v) NetEvents.Add("STOP", L.T("Registro eventi spento", "Event log turned off"));
+                NetEvents.Enabled = v;
+                if (v) { evInit = false; RefreshInfo(); }
+            });
+            miEvents.DropDownItems.Add(Mi("Apri il registro", "Open the log", delegate
+            {
+                try
+                {
+                    if (File.Exists(NetEvents.FilePath)) Process.Start("notepad.exe", "\"" + NetEvents.FilePath + "\"");
+                    else Msg(L.T("Nessun evento registrato finora.", "No events recorded yet."), MessageBoxButtons.OK, MessageBoxIcon.Information);
+                }
+                catch { }
+            }));
+            menu.Items.Add(miEvents);
             menu.Items.Add(new ToolStripSeparator());
 
             miAdapters = Mi("Schede di rete", "Network adapters", null);
@@ -663,12 +680,15 @@ namespace AppIP
                 FillDemo(opts.Contains("vpn"));
                 ApplyLook();
                 pingInterval = 5; gwMs = 2; netMs = 14;
+                NetEvents.Enabled = false;
                 ResizeToContent();
                 return;
             }
 
             LoadSettings();
             Settings.SaveHandler = SaveSettings; // l'assistente AI salva le sue impostazioni nello stesso file
+            ThreadPool.QueueUserWorkItem(delegate { NetEvents.Prune(); });
+            SystemEvents.PowerModeChanged += OnPowerModeChanged;
             ApplyLook();
             SetPingInterval(pingInterval);
 
@@ -1011,9 +1031,89 @@ namespace AppIP
             // Prima le schede "vere" con gateway, poi VPN, poi il resto
             allLines = result.OrderBy(l => l.HasGateway && !l.IsVpn ? 0 : l.IsVpn ? 1 : 2).ToList();
             ApplyFilter();
+            TrackEvents();
 
             if (DateTime.Now - lastPublicFetch > TimeSpan.FromMinutes(5))
                 FetchPublicIp();
+        }
+
+        // ---------- Registro eventi ----------
+        bool evInit, evWeak;
+        string evNetId, evName, evSsid, evIp, evGw, evVpn, evPub;
+        int evGwFail, evNetFail;            // ping persi di fila (thread del ping)
+        DateTime evGwDownAt, evNetDownAt;
+
+        // Confronta la rete con la lettura precedente e annota i cambiamenti
+        void TrackEvents()
+        {
+            if (demo || !NetEvents.Enabled) return;
+            var p = allLines.FirstOrDefault(l => l.HasGateway && !l.IsVpn && !l.IsVirtual) ?? allLines.FirstOrDefault(l => l.HasGateway && !l.IsVpn);
+            string id = p != null ? p.Id : null;
+            string ssid = p != null && p.IsWifi && !string.IsNullOrEmpty(p.WifiSsid) ? p.WifiSsid : null;
+            string name = p == null ? null : ssid != null ? "Wi-Fi \"" + ssid + "\"" : p.Name;
+            string ip = p != null ? p.IPv4Plain : null, gw = p != null ? p.Gateway : null;
+            string v = vpn != null ? vpn.Name + (vpn.IPv4Plain != "-" ? " (" + vpn.IPv4Plain + ")" : "") : null;
+            if (!evInit)
+            {
+                evInit = true;
+                NetEvents.Add("START", p == null ? L.T("AppIP avviato · nessuna rete", "AppIP started · no network")
+                                                 : L.F("AppIP avviato · {0}, IP {1}", "AppIP started · {0}, IP {1}", name, ip)
+                                                   + (v != null ? " · VPN " + v : ""));
+            }
+            else
+            {
+                if (id != evNetId)
+                {
+                    if (p == null) NetEvents.Add("NET", L.F("Rete scollegata (era {0})", "Network disconnected (was {0})", evName));
+                    else if (evNetId == null) NetEvents.Add("NET", L.F("Rete collegata: {0}, IP {1}", "Network connected: {0}, IP {1}", name, ip));
+                    else NetEvents.Add("NET", L.F("Rete cambiata: {0} → {1}, IP {2}", "Network changed: {0} → {1}, IP {2}", evName, name, ip));
+                }
+                else if (p != null)
+                {
+                    if (ssid != evSsid && ssid != null && evSsid != null)
+                        NetEvents.Add("WIFI", L.F("Rete Wi-Fi cambiata: \"{0}\" → \"{1}\"", "Wi-Fi network changed: \"{0}\" → \"{1}\"", evSsid, ssid));
+                    if (ip != evIp) NetEvents.Add("IP", L.F("Indirizzo IP cambiato: {0} → {1}", "IP address changed: {0} → {1}", evIp, ip));
+                    if (gw != evGw) NetEvents.Add("GW", L.F("Gateway cambiato: {0} → {1}", "Gateway changed: {0} → {1}", evGw, gw));
+                }
+                if (v != evVpn)
+                {
+                    if (v == null) NetEvents.Add("VPN", L.F("VPN disattivata ({0})", "VPN turned off ({0})", evVpn));
+                    else if (evVpn == null) NetEvents.Add("VPN", L.F("VPN attivata: {0}", "VPN turned on: {0}", v));
+                    else NetEvents.Add("VPN", L.F("VPN cambiata: {0} → {1}", "VPN changed: {0} → {1}", evVpn, v));
+                }
+            }
+            // Segnale Wi-Fi: debole sotto il 30%, di nuovo buono dal 45% (così non si annota ogni oscillazione)
+            if (p != null && p.IsWifi && p.WifiSignal >= 0)
+            {
+                if (!evWeak && p.WifiSignal < 30) { evWeak = true; NetEvents.Add("WIFI", L.F("Segnale Wi-Fi debole ({0}%)", "Weak Wi-Fi signal ({0}%)", p.WifiSignal)); }
+                else if (evWeak && p.WifiSignal >= 45) { evWeak = false; NetEvents.Add("WIFI", L.F("Segnale Wi-Fi di nuovo buono ({0}%)", "Wi-Fi signal good again ({0}%)", p.WifiSignal)); }
+            }
+            else evWeak = false;
+            evNetId = id; evName = name; evSsid = ssid; evIp = ip; evGw = gw; evVpn = v;
+        }
+
+        // Dal thread del ping: router o Internet che smettono di rispondere (2 ping persi di fila) e quando tornano
+        void TrackPing(int g, int n)
+        {
+            if (demo || !NetEvents.Enabled) return;
+            if (g == -1) { if (++evGwFail == 2) { evGwDownAt = DateTime.Now; NetEvents.Add("PING", L.T("Il router non risponde al ping", "The router does not answer ping")); } }
+            else if (g >= 0) { if (evGwFail >= 2) NetEvents.Add("PING", L.F("Il router risponde di nuovo (dopo {0})", "The router answers again (after {0})", Duration(DateTime.Now - evGwDownAt))); evGwFail = 0; }
+            if (n < 0 && g != -3) { if (++evNetFail == 2) { evNetDownAt = DateTime.Now; NetEvents.Add("PING", L.T("Internet non risponde al ping", "The Internet does not answer ping")); } }
+            else if (n >= 0) { if (evNetFail >= 2) NetEvents.Add("PING", L.F("Internet risponde di nuovo (dopo {0})", "The Internet answers again (after {0})", Duration(DateTime.Now - evNetDownAt))); evNetFail = 0; }
+        }
+
+        static string Duration(TimeSpan t)
+        {
+            if (t.TotalMinutes < 1) return (int)Math.Max(1, t.TotalSeconds) + " s";
+            if (t.TotalHours < 1) return (int)t.TotalMinutes + " min";
+            return (int)t.TotalHours + " h " + t.Minutes + " min";
+        }
+
+        void OnPowerModeChanged(object sender, PowerModeChangedEventArgs e)
+        {
+            if (demo) return;
+            if (e.Mode == PowerModes.Suspend) NetEvents.Add("SLEEP", L.T("PC in sospensione", "PC going to sleep"));
+            else if (e.Mode == PowerModes.Resume) NetEvents.Add("RESUME", L.T("PC ripreso dalla sospensione", "PC resumed from sleep"));
         }
 
         bool IsShown(NetLine l)
@@ -1176,7 +1276,7 @@ namespace AppIP
                     int g = gw == null ? -3 : DoPing(p, gw);
                     int n = DoPing(p, "1.1.1.1");
                     if (n < 0) n = DoPing(p, "8.8.8.8");
-                    if (pingInterval == iv) { gwMs = g; netMs = n; }
+                    if (pingInterval == iv) { gwMs = g; netMs = n; TrackPing(g, n); }
                     pingWake.WaitOne(iv * 1000);
                 }
             }
@@ -1229,6 +1329,11 @@ namespace AppIP
                     BeginInvoke(new Action(delegate
                     {
                         publicIp = ip ?? L.T("non disponibile", "unavailable");
+                        if (ip != null)
+                        {
+                            if (evPub != null && ip != evPub) NetEvents.Add("PUBIP", L.F("IP pubblico cambiato: {0} → {1}", "Public IP changed: {0} → {1}", evPub, ip));
+                            evPub = ip;
+                        }
                         if (want6) publicIp6 = ip6 ?? L.T("non disponibile", "unavailable");
                         UpdateTray();
                         Invalidate();
@@ -1906,6 +2011,7 @@ namespace AppIP
                     if (d.TryGetValue("dhcp", out v)) showDhcp = v != "0";
                     if (d.TryGetValue("wifiinfo", out v)) showWifiInfo = v != "0";
                     if (d.TryGetValue("updates", out v)) autoUpdate = v == "1";
+                    if (d.TryGetValue("events", out v)) NetEvents.Enabled = v != "0";
                     if (d.TryGetValue("speedtest", out v)) speedServer = v;
                     if (d.TryGetValue("theme", out v) && (v == "auto" || v == "dark" || v == "light")) theme = v;
                     int op;
@@ -1952,6 +2058,7 @@ namespace AppIP
                 sb.Append("dhcp=").Append(showDhcp ? "1" : "0").Append('\n');
                 sb.Append("wifiinfo=").Append(showWifiInfo ? "1" : "0").Append('\n');
                 sb.Append("updates=").Append(autoUpdate ? "1" : "0").Append('\n');
+                sb.Append("events=").Append(NetEvents.Enabled ? "1" : "0").Append('\n');
                 sb.Append("speedtest=").Append(speedServer).Append('\n');
                 foreach (var kv in Settings.Values.OrderBy(k => k.Key)) sb.Append(kv.Key).Append('=').Append(kv.Value).Append('\n');
                 File.WriteAllText(settingsPath, sb.ToString());
@@ -1964,6 +2071,8 @@ namespace AppIP
             SaveSettings();
             if (!demo) ClearJumpList();
             SystemEvents.UserPreferenceChanged -= OnUserPrefChanged;
+            SystemEvents.PowerModeChanged -= OnPowerModeChanged;
+            if (!demo && evInit) NetEvents.Add("STOP", L.T("AppIP chiuso", "AppIP closed"));
             tray.Visible = false;
             tray.Dispose();
             base.OnFormClosing(e);

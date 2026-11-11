@@ -30,6 +30,12 @@ namespace AppIP
         public string System;                                       // istruzioni (può essere null)
         public List<AiMessage> Messages = new List<AiMessage>();
         public int MaxTokens;                                       // 0 = valore predefinito del provider
+        // Strumenti che il modello può usare (null = nessuno): RunTool li esegue e restituisce il risultato come testo.
+        // Viene chiamato sul thread della richiesta.
+        public List<AiTool> Tools;
+        public Func<AiToolCall, string> RunTool;
+        public int MaxToolRounds = 6;                               // giri di strumenti al massimo, poi il modello deve rispondere
+        public Action OnRestart;                                    // il servizio ricomincia la risposta da capo (assistente locale)
 
         public static AiRequest Simple(string system, string user)
         {
@@ -39,6 +45,25 @@ namespace AppIP
         }
     }
 
+    class AiTool
+    {
+        public string Name, Description;
+        public Dictionary<string, object> Schema;                  // JSON Schema dei parametri
+    }
+
+    class AiToolCall
+    {
+        public string Id, Name, Json;                               // Json = argomenti come li ha scritti il modello
+        public Dictionary<string, object> Args;                     // null se il JSON non è valido
+    }
+
+    // Un blocco della risposta di Claude, da rimandare uguale nel giro successivo (testo, ragionamento, strumento)
+    class AiBlock
+    {
+        public string Type, Id, Name, Signature, Data;
+        public readonly StringBuilder Text = new StringBuilder();   // testo, ragionamento o JSON degli argomenti
+    }
+
     class AiResult
     {
         public string Text = "";        // tutto il testo ricevuto
@@ -46,6 +71,8 @@ namespace AppIP
         public string Model;            // il modello che ha risposto davvero
         public string Error;            // messaggio per l'utente, già tradotto; null = tutto bene
         public bool Cancelled;
+        public List<AiToolCall> ToolCalls = new List<AiToolCall>(); // strumenti chiesti in quest'ultima risposta
+        public List<AiBlock> Blocks = new List<AiBlock>();          // blocchi della risposta (solo Claude)
         public bool Ok { get { return Error == null && !Cancelled; } }
         public bool Truncated { get { return StopReason == "max_tokens" || StopReason == "length"; } }
     }
@@ -72,21 +99,64 @@ namespace AppIP
 
         protected abstract string Url { get; }
         protected abstract void AddHeaders(HttpWebRequest req);
-        protected abstract Dictionary<string, object> Body(AiRequest r);
+        // Conversazione nel formato del servizio: si allunga a ogni giro di strumenti
+        protected abstract List<object> StartConversation(AiRequest r);
+        protected abstract Dictionary<string, object> Body(AiRequest r, List<object> conv);
+        // Aggiunge alla conversazione la risposta con le richieste di strumenti e i risultati
+        protected abstract void AppendToolTurn(List<object> conv, AiResult res, List<string> results);
         // Una riga "data:" dello stream; restituisce false quando lo stream è finito
         protected abstract bool OnData(string data, AiResult res, Action<string> onText);
         protected abstract string ErrorFromBody(int status, string body);
 
+        // Una richiesta; se il modello chiede strumenti si eseguono e si riparte, finché risponde con il testo
         public AiResult Run(AiRequest r, Action<string> onText, CancellationToken cancel)
         {
             try { ServicePointManager.SecurityProtocol |= SecurityProtocolType.Tls12; } catch { }
+            var conv = StartConversation(r);
+            var total = new AiResult();
+            for (int round = 0; ; round++)
+            {
+                var res = RunOnce(r, conv, onText, cancel);
+                foreach (var c in res.ToolCalls)
+                    if (c.Args == null && c.Json != null)
+                        c.Args = c.Json.Trim().Length == 0 ? new Dictionary<string, object>() : Parse(c.Json) as Dictionary<string, object>;
+                total.Text += res.Text;
+                if (res.Model != null) total.Model = res.Model;
+                total.StopReason = res.StopReason;
+                total.Error = res.Error;
+                total.Cancelled = res.Cancelled;
+                if (!res.Ok || r.Tools == null || r.RunTool == null || res.ToolCalls.Count == 0) return total;
+                if (res.Truncated) { total.Error = Name + ": " + L.T("risposta troncata durante una richiesta di controllo.", "reply cut short during a check request."); return total; }
+                var results = new List<string>();
+                foreach (var c in res.ToolCalls)
+                {
+                    if (cancel.IsCancellationRequested) { total.Cancelled = true; return total; }
+                    string outp;
+                    if (round >= r.MaxToolRounds) outp = "Error: no more checks allowed. Answer now with what you have.";
+                    else if (c.Args == null) outp = "Error: INVALID_JSON. The arguments were not valid JSON; send the call again.";
+                    else
+                    {
+                        try { outp = r.RunTool(c); }
+                        catch (Exception ex) { outp = "Error: " + ex.Message; }
+                    }
+                    results.Add(outp ?? "");
+                }
+                AppendToolTurn(conv, res, results);
+            }
+        }
+
+        // Una sola chiamata al servizio, con nuovi tentativi se è sovraccarico
+        AiResult RunOnce(AiRequest r, List<object> conv, Action<string> onText, CancellationToken cancel)
+        {
             var res = new AiResult();
             byte[] body;
-            try { body = Encoding.UTF8.GetBytes(Json.Serialize(Body(r))); }
+            try { body = Encoding.UTF8.GetBytes(Json.Serialize(Body(r, conv))); }
             catch (Exception ex) { res.Error = ex.Message; return res; }
 
             for (int attempt = 0; ; attempt++)
             {
+                res.ToolCalls.Clear();
+                res.Blocks.Clear();
                 int retryAfter = 0;
                 bool started = false;   // è già arrivato del testo: da qui in poi niente nuovi tentativi
                 HttpWebRequest req = null;
@@ -282,7 +352,12 @@ namespace AppIP
             if (UseFallbacks) req.Headers["anthropic-beta"] = FallbackBeta;
         }
 
-        protected override Dictionary<string, object> Body(AiRequest r)
+        protected override List<object> StartConversation(AiRequest r)
+        {
+            return r.Messages.Select(m => (object)new Dictionary<string, object> { { "role", m.Role }, { "content", m.Text } }).ToList();
+        }
+
+        protected override Dictionary<string, object> Body(AiRequest r, List<object> conv)
         {
             var b = new Dictionary<string, object>
             {
@@ -290,16 +365,23 @@ namespace AppIP
                 // Con lo streaming non c'è rischio di timeout: margine ampio, anche per il "ragionamento" del modello
                 { "max_tokens", r.MaxTokens > 0 ? r.MaxTokens : 64000 },
                 { "stream", true },
-                { "messages", r.Messages.Select(m => new Dictionary<string, object> { { "role", m.Role }, { "content", m.Text } }).ToArray() }
+                { "messages", conv.ToArray() }
             };
             if (!string.IsNullOrEmpty(r.System)) b["system"] = r.System;
+            if (r.Tools != null && r.Tools.Count > 0)
+                b["tools"] = r.Tools.Select(t => new Dictionary<string, object>
+                {
+                    { "name", t.Name }, { "description", t.Description }, { "input_schema", t.Schema },
+                    { "eager_input_streaming", true }   // argomenti in streaming: si controllano prima di eseguire
+                }).ToArray();
             if (!string.IsNullOrEmpty(Effort)) b["output_config"] = new Dictionary<string, object> { { "effort", Effort } };
             if (UseFallbacks) b["fallbacks"] = "default";
             return b;
         }
 
         // Eventi: message_start, content_block_start/delta/stop, message_delta (stop_reason), message_stop, ping, error.
-        // Solo i "text_delta" sono testo della risposta; il ragionamento ("thinking") non si mostra.
+        // Solo i "text_delta" sono testo della risposta; il ragionamento ("thinking") non si mostra, ma i blocchi
+        // si conservano tutti (con la firma) per rimandarli uguali nel giro successivo degli strumenti.
         protected override bool OnData(string data, AiResult res, Action<string> onText)
         {
             var o = Parse(data);
@@ -308,9 +390,41 @@ namespace AppIP
                 case "message_start":
                     res.Model = Str(o, "message", "model");
                     break;
-                case "content_block_delta":
-                    if (Str(o, "delta", "type") == "text_delta") onText(Str(o, "delta", "text"));
+                case "content_block_start":
+                {
+                    var cb = Get(o, "content_block");
+                    var blk = new AiBlock { Type = Str(cb, "type"), Id = Str(cb, "id"), Name = Str(cb, "name"), Data = Str(cb, "data"), Signature = Str(cb, "signature") };
+                    if (blk.Type == "text") blk.Text.Append(Str(cb, "text") ?? "");
+                    if (blk.Type == "thinking") blk.Text.Append(Str(cb, "thinking") ?? "");
+                    res.Blocks.Add(blk);
                     break;
+                }
+                case "content_block_delta":
+                {
+                    var blk = res.Blocks.Count > 0 ? res.Blocks[res.Blocks.Count - 1] : null;
+                    string dt = Str(o, "delta", "type");
+                    if (dt == "text_delta")
+                    {
+                        string t = Str(o, "delta", "text");
+                        if (blk != null) blk.Text.Append(t);
+                        onText(t);
+                    }
+                    else if (blk != null && dt == "thinking_delta") blk.Text.Append(Str(o, "delta", "thinking"));
+                    else if (blk != null && dt == "signature_delta") blk.Signature = (blk.Signature ?? "") + Str(o, "delta", "signature");
+                    else if (blk != null && dt == "input_json_delta") blk.Text.Append(Str(o, "delta", "partial_json"));
+                    break;
+                }
+                case "content_block_stop":
+                {
+                    var blk = res.Blocks.Count > 0 ? res.Blocks[res.Blocks.Count - 1] : null;
+                    if (blk != null && blk.Type == "tool_use")
+                    {
+                        string json = blk.Text.ToString();
+                        var args = json.Trim().Length == 0 ? new Dictionary<string, object>() : Parse(json) as Dictionary<string, object>;
+                        res.ToolCalls.Add(new AiToolCall { Id = blk.Id, Name = blk.Name, Json = json, Args = args });
+                    }
+                    break;
+                }
                 case "message_delta":
                     res.StopReason = Str(o, "delta", "stop_reason") ?? res.StopReason;
                     break;
@@ -331,6 +445,28 @@ namespace AppIP
         protected override string ErrorFromBody(int status, string body)
         {
             return HttpError(status, ErrorMessage(body));
+        }
+
+        // Risposta dell'assistente con tutti i suoi blocchi (ragionamento compreso, invariato) e risultati degli strumenti
+        protected override void AppendToolTurn(List<object> conv, AiResult res, List<string> results)
+        {
+            var content = new List<object>();
+            foreach (var b in res.Blocks)
+            {
+                if (b.Type == "text") { if (b.Text.Length > 0) content.Add(new Dictionary<string, object> { { "type", "text" }, { "text", b.Text.ToString() } }); }
+                else if (b.Type == "thinking") content.Add(new Dictionary<string, object> { { "type", "thinking" }, { "thinking", b.Text.ToString() }, { "signature", b.Signature ?? "" } });
+                else if (b.Type == "redacted_thinking") content.Add(new Dictionary<string, object> { { "type", "redacted_thinking" }, { "data", b.Data ?? "" } });
+                else if (b.Type == "tool_use")
+                {
+                    var call = res.ToolCalls.FirstOrDefault(c => c.Id == b.Id);
+                    content.Add(new Dictionary<string, object> { { "type", "tool_use" }, { "id", b.Id }, { "name", b.Name }, { "input", (call != null ? call.Args : null) ?? new Dictionary<string, object>() } });
+                }
+            }
+            conv.Add(new Dictionary<string, object> { { "role", "assistant" }, { "content", content.ToArray() } });
+            var outp = new List<object>();
+            for (int i = 0; i < res.ToolCalls.Count; i++)
+                outp.Add(new Dictionary<string, object> { { "type", "tool_result" }, { "tool_use_id", res.ToolCalls[i].Id }, { "content", results[i] } });
+            conv.Add(new Dictionary<string, object> { { "role", "user" }, { "content", outp.ToArray() } });
         }
     }
 
@@ -358,17 +494,28 @@ namespace AppIP
             if (!string.IsNullOrEmpty(ApiKey)) req.Headers[HttpRequestHeader.Authorization] = "Bearer " + ApiKey;
         }
 
-        protected override Dictionary<string, object> Body(AiRequest r)
+        protected override List<object> StartConversation(AiRequest r)
         {
             var msgs = new List<object>();
             if (!string.IsNullOrEmpty(r.System)) msgs.Add(new Dictionary<string, object> { { "role", "system" }, { "content", r.System } });
             foreach (var m in r.Messages) msgs.Add(new Dictionary<string, object> { { "role", m.Role }, { "content", m.Text } });
+            return msgs;
+        }
+
+        protected override Dictionary<string, object> Body(AiRequest r, List<object> conv)
+        {
             var b = new Dictionary<string, object>
             {
                 { "model", Model ?? "" },
                 { "stream", true },
-                { "messages", msgs }
+                { "messages", conv.ToArray() }
             };
+            if (r.Tools != null && r.Tools.Count > 0)
+                b["tools"] = r.Tools.Select(t => new Dictionary<string, object>
+                {
+                    { "type", "function" },
+                    { "function", new Dictionary<string, object> { { "name", t.Name }, { "description", t.Description }, { "parameters", t.Schema } } }
+                }).ToArray();
             // max_tokens solo se richiesto: i modelli recenti di OpenAI vogliono un altro nome per lo stesso campo
             if (r.MaxTokens > 0) b["max_tokens"] = r.MaxTokens;
             if (Extra != null) foreach (var kv in Extra) b[kv.Key] = kv.Value;
@@ -389,9 +536,41 @@ namespace AppIP
             }
             if (res.Model == null) res.Model = Str(o, "model");
             onText(Str(o, "choices", 0, "delta", "content"));
+            // Strumenti: arrivano a pezzi, ognuno con il suo indice (id e nome nel primo pezzo, poi gli argomenti)
+            var calls = Get(o, "choices", 0, "delta", "tool_calls") as IList;
+            if (calls != null)
+                foreach (var c in calls)
+                {
+                    int idx = 0;
+                    var ix = Get(c, "index");
+                    if (ix != null) idx = Convert.ToInt32(ix, CultureInfo.InvariantCulture);
+                    while (res.ToolCalls.Count <= idx) res.ToolCalls.Add(new AiToolCall { Json = "" });
+                    var tc = res.ToolCalls[idx];
+                    if (Str(c, "id") != null) tc.Id = Str(c, "id");
+                    if (Str(c, "function", "name") != null) tc.Name = (tc.Name ?? "") + Str(c, "function", "name");
+                    tc.Json += Str(c, "function", "arguments") ?? "";
+                }
             string finish = Str(o, "choices", 0, "finish_reason");
             if (finish != null) res.StopReason = finish;
             return true;
+        }
+
+        protected override void AppendToolTurn(List<object> conv, AiResult res, List<string> results)
+        {
+            var calls = new List<object>();
+            for (int i = 0; i < res.ToolCalls.Count; i++)
+            {
+                var c = res.ToolCalls[i];
+                if (string.IsNullOrEmpty(c.Id)) c.Id = "call_" + (conv.Count + i);
+                calls.Add(new Dictionary<string, object>
+                {
+                    { "id", c.Id }, { "type", "function" },
+                    { "function", new Dictionary<string, object> { { "name", c.Name ?? "" }, { "arguments", string.IsNullOrEmpty(c.Json) ? "{}" : c.Json } } }
+                });
+            }
+            conv.Add(new Dictionary<string, object> { { "role", "assistant" }, { "content", res.Text ?? "" }, { "tool_calls", calls.ToArray() } });
+            for (int i = 0; i < res.ToolCalls.Count; i++)
+                conv.Add(new Dictionary<string, object> { { "role", "tool" }, { "tool_call_id", res.ToolCalls[i].Id }, { "content", results[i] } });
         }
 
         protected override string ErrorFromBody(int status, string body)
@@ -471,7 +650,8 @@ namespace AppIP
         public static string OpenAiModel { get { return Settings.Get("ai.openai.model", ""); } set { Settings.Set("ai.openai.model", value); } }
 
         public static string LocalModel { get { return Settings.Get("ai.local.model", AiCatalog.Recommended().Id); } set { Settings.Set("ai.local.model", value); } }
-        public static string LocalVariant { get { return Settings.Get("ai.local.variant", "cpu"); } set { Settings.Set("ai.local.variant", value); } }
+        // "auto" (predefinito): scheda video con riserva sul processore; "cpu"; "vulkan" (solo GPU)
+        public static string LocalVariant { get { return Settings.Get("ai.local.variant", "auto"); } set { Settings.Set("ai.local.variant", value); } }
 
         public static bool IsLocalUrl(string url)
         {

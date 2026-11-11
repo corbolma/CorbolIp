@@ -693,6 +693,13 @@ namespace AppIP
                 sb.AppendLine();
                 try { sb.Append(snap.NetText()); } catch { }
             }
+            string ev = NetEvents.Text(24, 30, false);
+            if (ev.Length > 0)
+            {
+                sb.AppendLine();
+                sb.AppendLine(L.T("Eventi di rete delle ultime 24 ore:", "Network events in the last 24 hours:"));
+                sb.Append(ev);
+            }
             return sb.ToString();
         }
 
@@ -731,23 +738,30 @@ namespace AppIP
             "them and never use one that does not appear in the data. Do not mention the computer, user or network name unless it helps the user. " +
             "Rely only on the data provided and never invent values; if the data is not " +
             "enough to be sure, say so and suggest what to check. Write plain text for a small window: no Markdown headings, bold or tables; " +
-            "use short paragraphs and lists with \"- \".";
+            "use short paragraphs and lists with \"- \". Never say that you checked or tested something unless its result is in the data.";
 
-        static string ExplainPrompt()
+        const string ToolsHelp =
+            "You can run extra network checks with the tools (at most " + "5" + " in total) when they help to find or confirm the cause, " +
+            "for example a ping or traceroute when the router or the Internet does not answer, a DNS lookup or http_check for a site the " +
+            "user mentions, tcp_port for a service, recent_events to see whether the connection dropped earlier. If the user mentions a " +
+            "specific site, service or address, check it with the tools before answering. Otherwise do not run checks when the results " +
+            "are already clear. After the checks, write only the final answer for the user and mention what the extra checks showed.";
+
+        static string ExplainPrompt(bool tools)
         {
             return "You are the network assistant built into AppIP, a small network widget for Windows. You receive the results of an " +
                    "automatic network diagnosis run on the user's PC. Explain to a non-technical office worker what the results mean and " +
                    "what they can do about it, step by step, starting from the most likely fix. If everything works, say so briefly. " +
-                   "Keep it under about 150 words. " + Common + " Answer in " + LangName() + ".";
+                   "Keep it under about 150 words. " + Common + (tools ? " " + ToolsHelp : "") + " Answer in " + LangName() + ".";
         }
 
-        static string TicketPrompt()
+        static string TicketPrompt(bool tools)
         {
             return "You are the network assistant built into AppIP, a small network widget for Windows. Using the results of an automatic " +
                    "network diagnosis run on the user's PC, write a support request that the user will send to the IT help desk. Start " +
                    "with a one-line subject, then describe the problem from the user's point of view (use their description if given), " +
                    "what the checks found and the most likely cause. Keep it under about 150 words and do not list all the technical " +
-                   "details: the full diagnostic report is attached automatically below your text. " + Common + " Answer in " + LangName() + ".";
+                   "details: the full diagnostic report is attached automatically below your text. " + Common + (tools ? " " + ToolsHelp : "") + " Answer in " + LangName() + ".";
         }
 
         static string StateWord(DiagState s)
@@ -798,6 +812,10 @@ namespace AppIP
             }
             if (snap != null && snap.Vpn != null)
                 sb.AppendLine("- VPN adapter: " + snap.Vpn.Name + " (" + snap.Vpn.Description + "), IP " + snap.Vpn.IPv4Plain + ", DNS " + snap.Vpn.Dns);
+            string ev = NetEvents.Text(24, 25, true);
+            sb.AppendLine();
+            if (ev.Length > 0) { sb.AppendLine("Network events recorded on this PC in the last 24 hours (local time):"); sb.Append(ev); }
+            else sb.AppendLine(NetEvents.Enabled ? "No network events recorded in the last 24 hours." : "The network event log is turned off.");
             return sb.ToString();
         }
 
@@ -814,14 +832,23 @@ namespace AppIP
                 if (!string.IsNullOrEmpty(l.WifiSsid)) a.Add(l.WifiSsid, "WIFI");
                 a.Add(l.Mac, "MAC");
             }
+            // gli eventi scrivono i nomi delle reti Wi-Fi tra virgolette
+            foreach (var e in NetEvents.Recent(168))
+                if (e.Kind == "WIFI" || e.Kind == "NET" || e.Kind == "START")
+                    foreach (Match m in Regex.Matches(e.Text, "\"([^\"]+)\""))
+                        a.Add(m.Groups[1].Value, "WIFI");
             return a;
         }
 
         // Richiesta da mandare: istruzioni e messaggio (già anonimizzato se richiesto)
-        void BuildRequest(bool ticket, string note, out string sys, out string user, out Anonymizer anon)
+        // L'assistente locale (modello piccolo) non usa gli strumenti: nelle prove diceva di aver controllato senza farlo.
+        // I siti citati dall'utente li controlla comunque AppIP (vedi RunAi).
+        static bool UsesTools(IAiProvider prov) { return prov != LocalAi.Instance; }
+
+        void BuildRequest(bool ticket, string note, bool tools, out string sys, out string user, out Anonymizer anon)
         {
             anon = AiSettings.Anonymize ? BuildAnon() : null;
-            sys = ticket ? TicketPrompt() : ExplainPrompt();
+            sys = ticket ? TicketPrompt(tools) : ExplainPrompt(tools);
             user = (note.Trim().Length > 0 ? "The user describes the problem like this: " + note.Trim() + "\n\n" : "") + AiInput();
             if (anon != null) user = anon.Apply(user);
         }
@@ -842,7 +869,8 @@ namespace AppIP
                 if (note == null) return;
             }
             string sys, user; Anonymizer anon;
-            BuildRequest(ticket, note, out sys, out user, out anon);
+            bool tools = UsesTools(prov);
+            BuildRequest(ticket, note, tools, out sys, out user, out anon);
             lastSent = SentText(prov, sys, user, anon != null);
             aiText = null;
 
@@ -855,19 +883,88 @@ namespace AppIP
                 ? L.T("Avvio dell'assistente locale: la prima volta può richiedere fino a un minuto...", "Starting the local assistant: the first time it can take up to a minute...")
                 : L.F("{0} sta scrivendo...", "{0} is writing...", prov.Name), true);
 
+            // Nel riquadro: il testo dell'assistente e, man mano, i controlli che esegue ("» ping 8.8.8.8 → ...")
             var acc = new StringBuilder();
+            var checksDone = new List<string>();
+            var sentLog = new StringBuilder();
+            Action refresh = delegate
+            {
+                string shown;
+                lock (acc) shown = acc.ToString();
+                if (anon != null) shown = anon.Restore(shown);
+                Ui(delegate { if (aiCts == cts) ShowAi(shown); });
+            };
+            int calls = 0;
+            var req = AiRequest.Simple(sys, user);
+            if (tools) req.Tools = DiagTools.Definitions();
+            req.RunTool = delegate (AiToolCall c)
+            {
+                // gli argomenti possono contenere segnaposti ([PC]...): si eseguono con i valori veri
+                if (anon != null && c.Args != null)
+                    foreach (var k in c.Args.Keys.ToList())
+                        if (c.Args[k] is string) c.Args[k] = anon.Restore((string)c.Args[k]);
+                string label = DiagTools.Describe(c);
+                if (++calls > DiagTools.MaxCalls) return "Error: the limit of " + DiagTools.MaxCalls + " checks is reached. Answer now with what you have.";
+                lock (acc) acc.Append((acc.Length > 0 && acc[acc.Length - 1] != '\n' ? "\n" : "") + "» " + label + " ...\n");
+                refresh();
+                string outp = DiagTools.Execute(c, cts.Token);
+                string first = outp.Split('\n')[0].Trim();
+                lock (acc)
+                {
+                    acc.Length -= 5; // toglie " ...\n"
+                    acc.Append(" → " + (first.Length > 120 ? first.Substring(0, 120) + "…" : first) + "\n\n");
+                }
+                checksDone.Add(label + ": " + first);
+                refresh();
+                string sentOut = anon != null ? anon.Apply(outp) : outp;
+                lock (sentLog) sentLog.AppendLine().AppendLine("--- " + L.F("Controllo: {0}", "Check: {0}", label) + " ---").Append(sentOut);
+                return sentOut;
+            };
             var t = new Thread(delegate ()
             {
-                var res = prov.Run(AiRequest.Simple(sys, user), delegate (string chunk)
+                var targets = DiagTools.TargetsIn(note);
+                if (targets.Count > 0)
                 {
-                    string shown;
-                    lock (acc) { acc.Append(chunk); shown = acc.ToString(); }
-                    if (anon != null) shown = anon.Restore(shown);
-                    Ui(delegate { if (aiCts == cts) ShowAi(shown); });
+                    var pre = new StringBuilder();
+                    foreach (var c in targets.SelectMany(DiagTools.ChecksFor))
+                    {
+                        if (cts.IsCancellationRequested) break;
+                        string label = DiagTools.Describe(c);
+                        lock (acc) acc.Append("» " + label + " ...\n");
+                        refresh();
+                        string outp;
+                        try { outp = DiagTools.Execute(c, cts.Token); } catch (Exception ex) { outp = "Error: " + ex.Message; }
+                        string first = outp.Split('\n')[0].Trim();
+                        lock (acc) { acc.Length -= 5; acc.Append(" → " + (first.Length > 120 ? first.Substring(0, 120) + "…" : first) + "\n"); }
+                        refresh();
+                        checksDone.Add(label + ": " + first);
+                        pre.AppendLine("- " + label + ": " + outp.Trim());
+                    }
+                    lock (acc) acc.Append("\n");
+                    string extra = "\n\nChecks that AppIP ran on what the user mentioned:\n" + pre;
+                    if (anon != null) extra = anon.Apply(extra);
+                    req.Messages[0].Text += extra;
+                    lock (sentLog) sentLog.Append(extra);
+                }
+                int keep;
+                lock (acc) keep = acc.Length; // fin qui: i controlli di AppIP, da tenere se l'assistente ricomincia
+                req.OnRestart = delegate
+                {
+                    lock (acc) { acc.Length = keep; acc.Append(L.T("(l'assistente locale si è chiuso: riparte e ricomincia la risposta...)", "(the local assistant closed: restarting the reply...)") + "\n"); }
+                    calls = 0;
+                    refresh();
+                };
+                var res = prov.Run(req, delegate (string chunk)
+                {
+                    lock (acc) acc.Append(chunk);
+                    refresh();
                 }, cts.Token);
-                string final = anon != null ? anon.Restore(res.Text) : res.Text;
+                string final;
+                lock (acc) final = acc.ToString();
+                if (anon != null) final = anon.Restore(final);
                 Ui(delegate
                 {
+                    lock (sentLog) if (sentLog.Length > 0) lastSent += "\n" + sentLog;
                     aiCts = null;
                     btn.Text = idle;
                     btnExplain.Enabled = btnTicket.Enabled = btnStart.Enabled = true;
@@ -875,9 +972,14 @@ namespace AppIP
                     if (!res.Ok) { ShowAi(res.Error + (final.Length > 0 ? "\n\n" + final : "")); return; }
                     string text = final.Trim();
                     if (res.Truncated) text += "\n\n" + L.T("(risposta troncata)", "(reply cut short)");
+                    ShowAi(text);
+                    // per "Copia report": risposta senza le righe dei controlli, che vanno in un elenco a parte
+                    string answer = string.Join("\n", text.Split('\n').Where(l => !l.StartsWith("» "))).Trim();
+                    if (checksDone.Count > 0)
+                        answer += "\n\n" + L.T("Controlli aggiuntivi dell'assistente:", "Extra checks by the assistant:") + "\n- " + string.Join("\n- ", checksDone);
+                    text = answer;
                     aiText = text;
                     aiIsTicket = ticket;
-                    ShowAi(text);
                     txtAi.SelectionStart = 0; // a risposta finita si legge dall'inizio
                     txtAi.ScrollToCaret();
                     if (ticket)
@@ -914,7 +1016,7 @@ namespace AppIP
                 var prov = AiSettings.CurrentProvider();
                 if (prov == null) { ShowAi(L.T("L'assistente non è configurato: apri Assistente AI... dal menu di AppIP.", "The assistant is not set up: open AI assistant... from the AppIP menu.")); return; }
                 string sys, user; Anonymizer anon;
-                BuildRequest(false, "", out sys, out user, out anon);
+                BuildRequest(false, "", UsesTools(prov), out sys, out user, out anon);
                 text = SentText(prov, sys, user, anon != null);
             }
             using (var f = new Form

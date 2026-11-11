@@ -44,7 +44,7 @@ namespace AppIP
 
         readonly Func<string> getServer;
         readonly Action<string> setServer;
-        readonly Label lblPing, lblJitter, lblDown, lblUp, lblStatus, lblInfo;
+        readonly Label lblPing, lblJitter, lblDown, lblUp, lblStatus, lblInfo, lblVerdict;
         readonly TextBox txtServer;
         readonly ProgressBar bar;
         readonly Button btnStart, btnCopy;
@@ -86,7 +86,9 @@ namespace AppIP
                 Controls.Add(new Label { Text = caps[i], AutoSize = true, Location = new Point(x, 16), ForeColor = gray });
                 values[i] = new Label { Text = "–", AutoSize = true, Location = new Point(x - 4, 34), Font = bigFont };
                 Controls.Add(values[i]);
-                Controls.Add(new Label { Text = units[i], AutoSize = true, Location = new Point(x, 76), ForeColor = gray });
+                var unit = new Label { Text = units[i], AutoSize = true, Location = new Point(x, 76), ForeColor = gray };
+                Controls.Add(unit);
+                unit.BringToFront(); // il valore grande occupa anche quest'area: l'unità resta visibile sopra
             }
             lblPing = values[0]; lblDown = values[1]; lblUp = values[2];
             lblJitter = new Label { Text = "", AutoSize = true, Location = new Point(20, 94), ForeColor = gray };
@@ -94,12 +96,14 @@ namespace AppIP
             bar = new ProgressBar { Location = new Point(20, 124), Size = new Size(400, 8), Maximum = 1000, Style = ProgressBarStyle.Continuous };
             lblStatus = new Label { Text = L.T("Pronto.", "Ready."), AutoSize = true, Location = new Point(20, 138) };
             lblInfo = new Label { Text = "", AutoSize = true, Location = new Point(20, 158), ForeColor = gray };
+            // Commento a regole: per cosa basta la linea (videochiamate, streaming, lavoro da remoto)
+            lblVerdict = new Label { Text = "", AutoSize = false, Location = new Point(20, 178), Size = new Size(400, 46) };
 
-            var lblSrv = new Label { Text = L.T("Server:", "Server:"), AutoSize = true, Location = new Point(20, 194) };
-            txtServer = new TextBox { Location = new Point(76, 191), Size = new Size(260, 23), Text = getServer() };
+            var lblSrv = new Label { Text = L.T("Server:", "Server:"), AutoSize = true, Location = new Point(20, 232) };
+            txtServer = new TextBox { Location = new Point(76, 229), Size = new Size(260, 23), Text = getServer() };
             var lnkDefault = new LinkLabel
             {
-                Text = L.T("Predefinito", "Default"), AutoSize = true, Location = new Point(344, 194),
+                Text = L.T("Predefinito", "Default"), AutoSize = true, Location = new Point(344, 232),
                 LinkBehavior = LinkBehavior.HoverUnderline
             };
             lnkDefault.LinkClicked += delegate { txtServer.Text = DefaultServer; };
@@ -108,17 +112,17 @@ namespace AppIP
                 "Base di un server compatibile con speed.cloudflare.com (test completo)\noppure indirizzo di un file da scaricare (solo latenza e download).",
                 "Base URL of a server compatible with speed.cloudflare.com (full test)\nor URL of a file to download (latency and download only)."));
 
-            btnStart = new Button { Text = L.T("Avvia", "Start"), Size = new Size(100, 30), Location = new Point(20, 234) };
-            btnCopy = new Button { Text = L.T("Copia risultato", "Copy result"), Size = new Size(120, 30), Location = new Point(128, 234), Enabled = false };
-            var btnClose = new Button { Text = L.T("Chiudi", "Close"), Size = new Size(90, 30), Location = new Point(330, 234) };
+            btnStart = new Button { Text = L.T("Avvia", "Start"), Size = new Size(100, 30), Location = new Point(20, 272) };
+            btnCopy = new Button { Text = L.T("Copia risultato", "Copy result"), Size = new Size(120, 30), Location = new Point(128, 272), Enabled = false };
+            var btnClose = new Button { Text = L.T("Chiudi", "Close"), Size = new Size(90, 30), Location = new Point(330, 272) };
             btnStart.Click += delegate { if (worker != null) Stop(); else Start(); };
             btnCopy.Click += delegate { try { Clipboard.SetText(ResultText()); lblStatus.Text = L.T("Risultato copiato.", "Result copied."); } catch { } };
             btnClose.Click += delegate { Close(); };
             AcceptButton = btnStart;
             CancelButton = btnClose;
 
-            Controls.AddRange(new Control[] { lblJitter, bar, lblStatus, lblInfo, lblSrv, txtServer, lnkDefault, btnStart, btnCopy, btnClose });
-            ClientSize = new Size(440, 280);
+            Controls.AddRange(new Control[] { lblJitter, bar, lblStatus, lblInfo, lblVerdict, lblSrv, txtServer, lnkDefault, btnStart, btnCopy, btnClose });
+            ClientSize = new Size(440, 318);
             Scale(new SizeF(UiFont.Scale, UiFont.Scale)); // coordinate pensate per 9 pt
         }
 
@@ -148,7 +152,7 @@ namespace AppIP
             resServer = null;
             lastError = null;
             lblPing.Text = lblDown.Text = lblUp.Text = "–";
-            lblJitter.Text = lblInfo.Text = "";
+            lblJitter.Text = lblInfo.Text = lblVerdict.Text = "";
             bar.Value = 0;
             btnStart.Text = L.T("Interrompi", "Stop");
             btnCopy.Enabled = false;
@@ -226,6 +230,9 @@ namespace AppIP
             {
                 lblUp.Text = Mbps(resUp);
                 lblDown.Text = Mbps(resDown);
+                bool good;
+                lblVerdict.Text = Verdict(out good);
+                lblVerdict.ForeColor = good ? Color.FromArgb(30, 130, 60) : Color.FromArgb(190, 110, 0);
                 Finished(status);
             });
         }
@@ -500,6 +507,25 @@ namespace AppIP
             return v.ToString(v < 10 ? "0.00" : v < 100 ? "0.0" : "0");
         }
 
+        // Per cosa basta la linea misurata. Soglie: videochiamate HD (Teams, Zoom) circa 4 Mbit/s in download e
+        // 3 in upload, latenza sotto 100 ms e jitter sotto 30 ms; streaming 4K circa 25 Mbit/s.
+        string Verdict(out bool good)
+        {
+            good = false;
+            if (resDown < 0 || resPing < 0) return "";
+            var issues = new List<string>();
+            if (resDown < 4) issues.Add(L.T("download basso", "low download speed"));
+            if (resUp >= 0 && resUp < 3) issues.Add(L.T("upload basso: gli altri potrebbero vederti a scatti", "low upload: others may see you stutter"));
+            if (resPing > 100) issues.Add(L.T("latenza alta: ritardi nelle conversazioni", "high latency: delays in conversations"));
+            if (resJitter > 30) issues.Add(L.T("jitter alto: audio e video possono scattare", "high jitter: audio and video may stutter"));
+            if (issues.Count > 0)
+                return L.T("Videochiamate: possibili problemi", "Video calls: possible problems") + " (" + string.Join("; ", issues) + ").";
+            good = true;
+            return resDown >= 25
+                ? L.T("Adatta a videochiamate HD, streaming 4K e lavoro da remoto.", "Good for HD video calls, 4K streaming and remote work.")
+                : L.T("Adatta a videochiamate HD e lavoro da remoto (per lo streaming 4K servono circa 25 Mbit/s).", "Good for HD video calls and remote work (4K streaming needs about 25 Mbit/s).");
+        }
+
         string ResultText()
         {
             var parts = new List<string>();
@@ -507,8 +533,10 @@ namespace AppIP
             if (resUp >= 0) parts.Add("Upload " + Mbps(resUp) + " Mbit/s");
             if (resPing >= 0) parts.Add(L.T("Latenza", "Latency") + " " + Ms(resPing) + " ms (jitter " + resJitter.ToString("0.0") + " ms, " + resMethod + ")");
             string when = (resTime == DateTime.MinValue ? DateTime.Now : resTime).ToString("g");
+            bool good;
+            string v = Verdict(out good);
             return L.T("Test velocità", "Speed test") + " " + when + " - " + string.Join(" · ", parts)
-                + (resServer != null ? " - " + resServer : "");
+                + (resServer != null ? " - " + resServer : "") + (v.Length > 0 ? " - " + v : "");
         }
     }
 }
