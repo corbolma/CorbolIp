@@ -843,7 +843,8 @@ namespace AppIP
         // Richiesta da mandare: istruzioni e messaggio (già anonimizzato se richiesto)
         // L'assistente locale (modello piccolo) non usa gli strumenti: nelle prove diceva di aver controllato senza farlo.
         // I siti citati dall'utente li controlla comunque AppIP (vedi RunAi).
-        static bool UsesTools(IAiProvider prov) { return prov != LocalAi.Instance; }
+        // Gli strumenti passano solo dalle API (Claude, compatibili OpenAI); Claude Code parte senza strumenti.
+        static bool UsesTools(IAiProvider prov) { return prov is AiHttpProvider; }
 
         void BuildRequest(bool ticket, string note, bool tools, out string sys, out string user, out Anonymizer anon)
         {

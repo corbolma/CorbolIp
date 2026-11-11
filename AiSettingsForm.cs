@@ -31,14 +31,14 @@ namespace AppIP
 
         readonly Action changed;
         readonly CheckBox chkOn, chkAnon, chkGpu;
-        readonly RadioButton rLocal, rClaude, rOpenAi;
+        readonly RadioButton rLocal, rClaude, rClaudeCode, rOpenAi;
         readonly TextBox txtClaudeKey, txtOaKey;
-        readonly ComboBox cbLocalModel, cbClaudeModel, cbEffort, cbUrl, cbOaModel;
+        readonly ComboBox cbLocalModel, cbClaudeModel, cbEffort, cbCcModel, cbUrl, cbOaModel;
         readonly Button btnList, btnTest, btnDownload;
         readonly ProgressBar bar;
         readonly LinkLabel lnkRemove;
         readonly Label lblTest, lblLocal;
-        readonly List<Control> localCtl = new List<Control>(), claudeCtl = new List<Control>(), oaCtl = new List<Control>();
+        readonly List<Control> localCtl = new List<Control>(), claudeCtl = new List<Control>(), ccCtl = new List<Control>(), oaCtl = new List<Control>();
         readonly AiDownloader downloader = new AiDownloader();
         readonly Dictionary<string, string> snapshot; // impostazioni all'apertura: si ripristinano con Annulla
         bool saved;
@@ -78,7 +78,7 @@ namespace AppIP
                 cbLocalModel.Items.Add(new Item(m.Id, m.Name + " · " + AiDownloader.FormatBytes(m.Size) + (m == rec ? " · " + L.T("consigliato", "recommended") : "")));
             Row(localCtl, L.T("Modello:", "Model:"), cbLocalModel, L0 + 18, y);
             y += 30;
-            chkGpu = new CheckBox { Text = L.T("Usa la scheda video (GPU), se dà problemi passa al processore", "Use the graphics card (GPU), falls back to the processor"), AutoSize = true, Location = new Point(L1, y) };
+            chkGpu = new CheckBox { Text = L.T("Usa la scheda video (GPU)", "Use the graphics card (GPU)"), AutoSize = true, Location = new Point(L1, y) };
             localCtl.Add(chkGpu);
             y += 26;
             lblLocal = Note("", L1, y, W, 40);
@@ -89,11 +89,11 @@ namespace AppIP
             btnDownload.Click += delegate { if (downloader.Busy) downloader.Cancel(); else StartDownload(); };
             localCtl.Add(btnDownload);
             localCtl.Add(bar);
-            y += 32;
-            lnkRemove = new LinkLabel { Text = "", AutoSize = false, Size = new Size(W, 24), Location = new Point(L1, y), LinkBehavior = LinkBehavior.HoverUnderline };
+            // sulla stessa riga del pulsante, dove compare la barra durante lo scaricamento
+            lnkRemove = new LinkLabel { Text = "", AutoSize = false, Size = new Size(W - 118, 24), Location = new Point(L1 + 118, y + 4), LinkBehavior = LinkBehavior.HoverUnderline };
             lnkRemove.LinkClicked += delegate { RemoveFiles(); };
             localCtl.Add(lnkRemove);
-            y += 32;
+            y += 36;
             downloader.Progress += st => Post(delegate { OnProgress(st); });
             cbLocalModel.SelectedIndexChanged += delegate { UpdateLocal(); };
             chkGpu.CheckedChanged += delegate { UpdateLocal(); };
@@ -120,6 +120,21 @@ namespace AppIP
                 new Item("high", L.T("Alto", "High"))
             });
             Row(claudeCtl, L.T("Impegno:", "Effort:"), cbEffort, L0 + 18, y);
+            y += 36;
+
+            // ---- Claude Code (abbonamento dell'utente) ----
+            rClaudeCode = new RadioButton { Text = L.T("Claude Code: usa il tuo abbonamento Claude (solo uso personale)", "Claude Code: uses your Claude subscription (personal use only)"), AutoSize = true, Location = new Point(L0, y) };
+            y += 26;
+            string ccExe = ClaudeCodeProvider.FindExe();
+            ccCtl.Add(Note(ccExe != null
+                ? L.T("Installato. Senza strumenti: riceve solo il testo della diagnosi.", "Installed. No tools: it only receives the diagnostics text.")
+                : L.T("Claude Code non è installato su questo PC: installalo e fai il login con il tuo account Claude.", "Claude Code is not installed on this PC: install it and log in with your Claude account."),
+                L1, y, W, 46));
+            y += 50;
+            cbCcModel = new ComboBox { Location = new Point(L1, y), Width = W, DropDownStyle = ComboBoxStyle.DropDownList };
+            cbCcModel.Items.Add(new Item("", L.T("Predefinito di Claude Code", "Claude Code default")));
+            foreach (var m in ClaudeCodeProvider.Models) cbCcModel.Items.Add(new Item(m, m));
+            Row(ccCtl, L.T("Modello:", "Model:"), cbCcModel, L0 + 18, y);
             y += 36;
 
             // ---- compatibile OpenAI ----
@@ -158,7 +173,8 @@ namespace AppIP
             AcceptButton = btnOk;
             CancelButton = btnCancel;
 
-            Controls.AddRange(new Control[] { chkOn, rLocal, rClaude, rOpenAi, chkAnon, btnTest, lblTest, btnOk, btnCancel });
+            Controls.AddRange(new Control[] { chkOn, rLocal, rClaude, rClaudeCode, rOpenAi, chkAnon, btnTest, lblTest, btnOk, btnCancel });
+            Controls.AddRange(ccCtl.ToArray());
             Controls.AddRange(localCtl.ToArray());
             Controls.AddRange(claudeCtl.ToArray());
             Controls.AddRange(oaCtl.ToArray());
@@ -170,7 +186,12 @@ namespace AppIP
             string prov = AiSettings.Provider;
             rOpenAi.Checked = prov == AiSettings.OpenAi;
             rClaude.Checked = prov == AiSettings.Claude;
-            rLocal.Checked = !rOpenAi.Checked && !rClaude.Checked;
+            rClaudeCode.Checked = prov == AiSettings.ClaudeCode;
+            rLocal.Checked = !rOpenAi.Checked && !rClaude.Checked && !rClaudeCode.Checked;
+            string ccm = AiSettings.ClaudeCodeModel;
+            int ci = cbCcModel.Items.Cast<Item>().ToList().FindIndex(i => i.Id == ccm);
+            if (ci < 0) { cbCcModel.Items.Add(new Item(ccm, ccm)); ci = cbCcModel.Items.Count - 1; }
+            cbCcModel.SelectedIndex = ci;
             string lm = AiSettings.LocalModel;
             cbLocalModel.SelectedIndex = Math.Max(0, cbLocalModel.Items.Cast<Item>().ToList().FindIndex(i => i.Id == lm));
             chkGpu.Checked = AiSettings.LocalVariant != "cpu";
@@ -183,6 +204,7 @@ namespace AppIP
             cbOaModel.Text = AiSettings.OpenAiModel;
             rLocal.CheckedChanged += delegate { UpdateEnabled(); };
             rClaude.CheckedChanged += delegate { UpdateEnabled(); };
+            rClaudeCode.CheckedChanged += delegate { UpdateEnabled(); };
             chkOn.CheckedChanged += delegate { UpdateEnabled(); };
             UpdateEnabled();
             UpdateLocal();
@@ -203,9 +225,10 @@ namespace AppIP
         void UpdateEnabled()
         {
             bool on = chkOn.Checked;
-            rLocal.Enabled = rClaude.Enabled = rOpenAi.Enabled = chkAnon.Enabled = btnTest.Enabled = on;
+            rLocal.Enabled = rClaude.Enabled = rClaudeCode.Enabled = rOpenAi.Enabled = chkAnon.Enabled = btnTest.Enabled = on;
             foreach (var c in localCtl) c.Enabled = on && rLocal.Checked;
             foreach (var c in claudeCtl) c.Enabled = on && rClaude.Checked;
+            foreach (var c in ccCtl) c.Enabled = on && rClaudeCode.Checked;
             foreach (var c in oaCtl) c.Enabled = on && rOpenAi.Checked;
             if (downloader.Busy) btnDownload.Enabled = true; // si può sempre interrompere
             else if (lblLocal != null) UpdateLocal();
@@ -264,7 +287,7 @@ namespace AppIP
             }
             long used = AiDownloader.UsedBytes();
             lnkRemove.Visible = used > (1L << 20); // non per il solo registro di llama-server
-            lnkRemove.Text = L.F("Elimina i file scaricati da AppIP ({0})", "Delete the files downloaded by AppIP ({0})", AiDownloader.FormatBytes(used));
+            lnkRemove.Text = L.F("Elimina i file scaricati ({0})", "Delete downloaded files ({0})", AiDownloader.FormatBytes(used));
         }
 
         void StartDownload()
@@ -272,6 +295,7 @@ namespace AppIP
             btnDownload.Text = L.T("Interrompi", "Stop");
             bar.Value = 0;
             bar.Visible = true;
+            lnkRemove.Visible = false;
             lblLocal.ForeColor = Grey;
             lblLocal.Text = L.T("Avvio dello scaricamento...", "Starting the download...");
             downloader.Start(SelectedModel(), PackageVariant());
@@ -308,6 +332,8 @@ namespace AppIP
         string CheckFields()
         {
             if (!chkOn.Checked || rLocal.Checked) return null;
+            if (rClaudeCode.Checked)
+                return ClaudeCodeProvider.FindExe() == null ? L.T("Claude Code non è installato su questo PC.", "Claude Code is not installed on this PC.") : null;
             if (rClaude.Checked)
             {
                 if (txtClaudeKey.Text.Trim().Length == 0) return L.T("Inserisci la chiave API di Claude.", "Enter the Claude API key.");
@@ -330,6 +356,8 @@ namespace AppIP
                 AiSettings.LocalVariant = SelectedVariant();
                 return LocalAi.Instance;
             }
+            if (rClaudeCode.Checked)
+                return new ClaudeCodeProvider { Model = ((Item)cbCcModel.SelectedItem).Id };
             if (rClaude.Checked)
                 return new ClaudeProvider { ApiKey = txtClaudeKey.Text.Trim(), Model = cbClaudeModel.Text.Trim(), Effort = ((Item)cbEffort.SelectedItem).Id };
             string url = cbUrl.Text.Trim();
@@ -340,7 +368,8 @@ namespace AppIP
         {
             AiSettings.Enabled = chkOn.Checked;
             AiSettings.Anonymize = chkAnon.Checked;
-            AiSettings.Provider = rOpenAi.Checked ? AiSettings.OpenAi : rClaude.Checked ? AiSettings.Claude : AiSettings.Local;
+            AiSettings.Provider = rOpenAi.Checked ? AiSettings.OpenAi : rClaude.Checked ? AiSettings.Claude : rClaudeCode.Checked ? AiSettings.ClaudeCode : AiSettings.Local;
+            AiSettings.ClaudeCodeModel = ((Item)cbCcModel.SelectedItem).Id;
             AiSettings.LocalModel = SelectedModel().Id;
             AiSettings.LocalVariant = SelectedVariant();
             AiSettings.ClaudeKey = txtClaudeKey.Text.Trim();

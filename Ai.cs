@@ -631,7 +631,7 @@ namespace AppIP
     // Impostazioni dell'assistente in settings.txt (chiavi "ai.*")
     static class AiSettings
     {
-        public const string Local = "local", Claude = "claude", OpenAi = "openai";
+        public const string Local = "local", Claude = "claude", ClaudeCode = "claudecode", OpenAi = "openai";
         public static readonly string[] Efforts = { "low", "medium", "high" };
 
         public static bool Enabled { get { return Settings.Get("ai.enabled", false); } set { Settings.Set("ai.enabled", value); } }
@@ -644,6 +644,9 @@ namespace AppIP
         public static string ClaudeModel { get { return Settings.Get("ai.claude.model", ClaudeProvider.DefaultModel); } set { Settings.Set("ai.claude.model", value); } }
         // Spiegare una diagnosi è un compito semplice: impegno basso di default (risposte rapide ed economiche)
         public static string ClaudeEffort { get { return Settings.Get("ai.claude.effort", "low"); } set { Settings.Set("ai.claude.effort", value); } }
+
+        // Claude Code: vuoto = modello predefinito dell'account; altrimenti "opus", "sonnet", "haiku" o un nome completo
+        public static string ClaudeCodeModel { get { return Settings.Get("ai.claudecode.model", ""); } set { Settings.Set("ai.claudecode.model", value); } }
 
         public static string OpenAiUrl { get { return Settings.Get("ai.openai.url", "https://api.openai.com/v1"); } set { Settings.Set("ai.openai.url", value); } }
         public static string OpenAiKey { get { return Secret.Unprotect(Settings.Get("ai.openai.key", "")); } set { Settings.Set("ai.openai.key", Secret.Protect(value)); } }
@@ -669,6 +672,7 @@ namespace AppIP
         public static IAiProvider CurrentProvider()
         {
             if (Provider == Local) return LocalAi.Instance;
+            if (Provider == ClaudeCode) return new ClaudeCodeProvider { Model = ClaudeCodeModel };
             if (Provider == OpenAi)
             {
                 if (OpenAiModel.Length == 0 || OpenAiUrl.Length == 0) return null;
