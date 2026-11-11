@@ -87,5 +87,17 @@ AppIP non raccoglie dati. Le uniche connessioni esterne sono la richiesta dell'I
 The user interface is available in **English and Italian**: it follows the Windows display language and can be changed from the menu (*Lingua / Language*).
 **Translations are welcome**: adding a language is just a text file, no coding required — see [lang/README.md](lang/README.md).
 
+## Componenti di terze parti / Third-party components
+AppIP non include componenti di terze parti. L'assistente locale, solo se lo attivi e premi *Scarica*, scarica sul PC:
+
+| Componente | Licenza | Da dove |
+|---|---|---|
+| [llama.cpp](https://github.com/ggml-org/llama.cpp) (`llama-server`), di ggml-org | [MIT](https://github.com/ggml-org/llama.cpp/blob/master/LICENSE) | release ufficiali su GitHub |
+| Modelli [Qwen3.5](https://huggingface.co/Qwen) 2B o 4B, di Alibaba (quantizzazione GGUF di unsloth) | [Apache 2.0](https://www.apache.org/licenses/LICENSE-2.0) | Hugging Face |
+
+Ogni file è controllato con il suo SHA-256. Claude, OpenAI e gli altri servizi compatibili sono usati solo tramite rete, con la chiave e secondo i termini d'uso di chi li configura.
+
+AppIP does not bundle third-party components. The local assistant downloads them only when you turn it on and press *Download*: **llama.cpp** (`llama-server`, ggml-org, MIT) from the official GitHub releases and the **Qwen3.5** 2B or 4B models (Alibaba, Apache 2.0, GGUF quantization by unsloth) from Hugging Face; each file is verified with its SHA-256. Claude, OpenAI and other compatible services are only called over the network, with the key and under the terms of whoever sets them up.
+
 ## Licenza / License
 [MIT](LICENSE) © 2026 Mauro Corboli
