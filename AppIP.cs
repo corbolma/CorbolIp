@@ -509,6 +509,7 @@ namespace AppIP
             {
                 DiagnosticsForm.ShowOnce(tray.Icon, DiagSnapshotNow, demo);
             }));
+            menu.Items.Add(Mi("Assistente AI...", "AI assistant...", delegate { AiSettingsForm.ShowOnce(tray.Icon, null); }));
             menu.Items.Add(new ToolStripSeparator());
 
             miAdapters = Mi("Schede di rete", "Network adapters", null);
@@ -667,6 +668,7 @@ namespace AppIP
             }
 
             LoadSettings();
+            Settings.SaveHandler = SaveSettings; // l'assistente AI salva le sue impostazioni nello stesso file
             ApplyLook();
             SetPingInterval(pingInterval);
 
@@ -1457,7 +1459,11 @@ namespace AppIP
             var p = allLines.FirstOrDefault(l => l.HasGateway && !l.IsVpn && !l.IsVirtual)
                  ?? allLines.FirstOrDefault(l => l.HasGateway && !l.IsVpn)
                  ?? allLines.FirstOrDefault(l => !l.IsVpn && !l.IsVirtual);
-            return new DiagSnapshot { Primary = p, Vpn = vpn, Dns = p != null && p.Dns != "-" ? p.Dns : "", NetText = BuildText };
+            return new DiagSnapshot
+            {
+                Primary = p, Vpn = vpn, All = allLines, Host = hostName, Domain = domain,
+                Dns = p != null && p.Dns != "-" ? p.Dns : "", NetText = BuildText
+            };
         }
 
         void CopyAll()
@@ -1907,6 +1913,8 @@ namespace AppIP
                     if (d.TryGetValue("opacity", out v) && int.TryParse(v, out op) && op >= 30 && op <= 100) opacity = op;
                     if (d.TryGetValue("hidden", out v)) foreach (var s in v.Split('|')) if (s.Length > 0) hiddenIds.Add(s);
                     if (d.TryGetValue("shown", out v)) foreach (var s in v.Split('|')) if (s.Length > 0) shownIds.Add(s);
+                    // Assistente AI: le sue chiavi si conservano così come sono (SaveSettings le riscrive)
+                    foreach (var kv in d) if (kv.Key.StartsWith("ai.")) Settings.Values[kv.Key] = kv.Value;
                 }
             }
             catch { }
@@ -1945,6 +1953,7 @@ namespace AppIP
                 sb.Append("wifiinfo=").Append(showWifiInfo ? "1" : "0").Append('\n');
                 sb.Append("updates=").Append(autoUpdate ? "1" : "0").Append('\n');
                 sb.Append("speedtest=").Append(speedServer).Append('\n');
+                foreach (var kv in Settings.Values.OrderBy(k => k.Key)) sb.Append(kv.Key).Append('=').Append(kv.Value).Append('\n');
                 File.WriteAllText(settingsPath, sb.ToString());
             }
             catch { }

@@ -173,8 +173,11 @@ namespace AppIP.Setup
             try { if (File.Exists(ExePath)) File.Delete(ExePath); } catch { }
 
             // L'uninstaller gira dalla cartella da eliminare: la cancella un cmd dopo la nostra uscita.
+            // Con lei va anche %LOCALAPPDATA%\AppIP (modelli dell'assistente locale, GB): llama-server si chiude
+            // con AppIP, quindi qualche secondo dopo i file non sono più in uso. Quelli di AppPad restano.
+            string aiData = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "AppIP");
             Process.Start(new ProcessStartInfo("cmd.exe",
-                "/c ping -n 3 127.0.0.1 >nul & rmdir /s /q \"" + InstallDir + "\"")
+                "/c ping -n 3 127.0.0.1 >nul & rmdir /s /q \"" + InstallDir + "\" & rmdir /s /q \"" + aiData + "\"")
             {
                 CreateNoWindow = true,
                 UseShellExecute = false,

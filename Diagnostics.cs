@@ -8,6 +8,7 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.Drawing;
 using System.Drawing.Drawing2D;
+using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Net;
@@ -26,6 +27,8 @@ namespace AppIP
     class DiagSnapshot
     {
         public NetLine Primary, Vpn;
+        public List<NetLine> All = new List<NetLine>();
+        public string Host = "", Domain = "";
         public string Dns = "";
         public Func<string> NetText; // dettagli delle schede per il report ("Copia tutto")
     }
@@ -52,6 +55,8 @@ namespace AppIP
 
         public static void ShowOnce(Icon icon, Func<DiagSnapshot> snapshot, bool demo)
         {
+            // se l'assistente è stato acceso o spento, la finestra va ricostruita (pulsanti e riquadro)
+            if (open != null && !open.IsDisposed && open.ai != AiSettings.Enabled && open.worker == null && open.aiCts == null) open.Close();
             if (open == null || open.IsDisposed) open = new DiagnosticsForm(icon, snapshot, demo);
             open.Show();
             open.WindowState = FormWindowState.Normal;
@@ -73,6 +78,15 @@ namespace AppIP
         DateTime runTime;
         DiagState conclState = DiagState.Wait;
         string conclTitle = "", conclText = "";
+        string pubIp; // IP pubblico visto dal controllo HTTPS (per l'anonimizzazione)
+
+        // assistente AI
+        readonly bool ai;
+        readonly Button btnExplain, btnTicket;
+        readonly TextBox txtAi;
+        CancellationTokenSource aiCts;
+        string aiText, lastSent; // ultima risposta (in chiaro) e ultimo testo inviato
+        bool aiIsTicket;
 
         DiagnosticsForm(Icon icon, Func<DiagSnapshot> snapshot, bool demo)
         {
@@ -122,20 +136,41 @@ namespace AppIP
             lblTitle = new Label { Text = "", AutoSize = true, Location = new Point(16, 262), Font = new Font("Segoe UI Semibold", UiFont.Pt + 1f) };
             lblText = new Label { Text = "", AutoSize = false, Location = new Point(16, 286), Size = new Size(508, 72) };
 
-            btnStart = new Button { Text = L.T("Ripeti", "Run again"), Size = new Size(100, 30), Location = new Point(16, 366) };
-            btnCopy = new Button { Text = L.T("Copia report", "Copy report"), Size = new Size(120, 30), Location = new Point(124, 366), Enabled = false };
-            var btnClose = new Button { Text = L.T("Chiudi", "Close"), Size = new Size(90, 30), Location = new Point(434, 366) };
-            btnStart.Click += delegate { if (worker != null) Stop(); else Start(); };
+            ai = AiSettings.Enabled;
+            int by = 366; // riga dei pulsanti in basso
+            var aiCtl = new List<Control>();
+            if (ai)
+            {
+                btnExplain = new Button { Text = L.T("Spiega", "Explain"), Size = new Size(100, 30), Location = new Point(16, 362), Enabled = false };
+                btnTicket = new Button { Text = L.T("Prepara segnalazione", "Write support request"), Size = new Size(170, 30), Location = new Point(124, 362), Enabled = false };
+                var lnkSent = new LinkLabel { Text = L.T("Cosa viene inviato", "What is sent"), AutoSize = false, Size = new Size(220, 24), Location = new Point(304, 367), LinkBehavior = LinkBehavior.HoverUnderline };
+                txtAi = new TextBox
+                {
+                    Multiline = true, ReadOnly = true, ScrollBars = ScrollBars.Vertical, BackColor = Color.White,
+                    Location = new Point(16, 400), Size = new Size(508, 150), ForeColor = Color.DimGray
+                };
+                btnExplain.Click += delegate { RunAi(false, btnExplain); };
+                btnTicket.Click += delegate { RunAi(true, btnTicket); };
+                lnkSent.LinkClicked += delegate { ShowSent(); };
+                aiCtl.AddRange(new Control[] { btnExplain, btnTicket, lnkSent, txtAi });
+                by = 562;
+            }
+
+            btnStart = new Button { Text = L.T("Ripeti", "Run again"), Size = new Size(100, 30), Location = new Point(16, by) };
+            btnCopy = new Button { Text = L.T("Copia report", "Copy report"), Size = new Size(120, 30), Location = new Point(124, by), Enabled = false };
+            var btnClose = new Button { Text = L.T("Chiudi", "Close"), Size = new Size(90, 30), Location = new Point(434, by) };
+            btnStart.Click += delegate { if (worker != null) Stop(); else if (aiCts == null) Start(); };
             btnCopy.Click += delegate
             {
-                try { Clipboard.SetText(ReportText()); lblTitle.Text = L.T("Report copiato negli appunti.", "Report copied to the clipboard."); lblTitle.ForeColor = Color.DimGray; }
+                try { Clipboard.SetText(CopyText()); lblTitle.Text = L.T("Report copiato negli appunti.", "Report copied to the clipboard."); lblTitle.ForeColor = Color.DimGray; }
                 catch { }
             };
             btnClose.Click += delegate { Close(); };
             CancelButton = btnClose;
 
             Controls.AddRange(new Control[] { list, lblTitle, lblText, btnStart, btnCopy, btnClose });
-            ClientSize = new Size(540, 410);
+            Controls.AddRange(aiCtl.ToArray());
+            ClientSize = new Size(540, by + 44);
             Scale(new SizeF(s, s)); // coordinate pensate per 9 pt
             Shown += delegate { FitColumns(); Start(); };
         }
@@ -189,6 +224,7 @@ namespace AppIP
         protected override void OnFormClosing(FormClosingEventArgs e)
         {
             Stop();
+            if (aiCts != null) aiCts.Cancel();
             base.OnFormClosing(e);
         }
 
@@ -201,6 +237,14 @@ namespace AppIP
             foreach (var c in checks) { c.State = DiagState.Wait; c.Detail = ""; c.TrustFailure = false; c.Ms = -1; c.Captive = false; ShowCheck(c); }
             conclState = DiagState.Wait;
             conclTitle = conclText = "";
+            pubIp = null;
+            aiText = null;
+            if (ai)
+            {
+                btnExplain.Enabled = btnTicket.Enabled = false;
+                ShowAi(L.T("Al termine dei controlli, Spiega chiede all'assistente cosa significano i risultati e cosa fare; Prepara segnalazione scrive il testo per l'assistenza.",
+                           "When the checks are done, Explain asks the assistant what the results mean and what to do; Write support request drafts the text for IT support."), true);
+            }
             lblTitle.Text = L.T("Diagnosi in corso...", "Running diagnostics...");
             lblTitle.ForeColor = Color.DimGray;
             lblText.Text = "";
@@ -235,6 +279,7 @@ namespace AppIP
                 : conclState == DiagState.Error ? Color.FromArgb(190, 40, 40) : Color.FromArgb(190, 110, 0);
             lblText.Text = conclText;
             btnCopy.Enabled = true;
+            if (ai) btnExplain.Enabled = btnTicket.Enabled = true;
         }
 
         void Ui(Action a)
@@ -491,6 +536,7 @@ namespace AppIP
                     var ip = Regex.Match(body, @"(?m)^ip=(\S+)");
                     var loc = Regex.Match(body, @"(?m)^loc=(\S+)");
                     string d = L.T("funziona", "works") + " · " + Ms((int)sw.ElapsedMilliseconds);
+                    if (ip.Success) pubIp = ip.Groups[1].Value;
                     if (ip.Success) d += " · " + L.T("IP pubblico", "public IP") + " " + ip.Groups[1].Value + (loc.Success ? " (" + loc.Groups[1].Value + ")" : "");
                     Set(cWeb, DiagState.Ok, d);
                 }
@@ -648,6 +694,262 @@ namespace AppIP
                 try { sb.Append(snap.NetText()); } catch { }
             }
             return sb.ToString();
+        }
+
+        // Testo di "Copia report": la segnalazione dell'assistente va in cima, la spiegazione in fondo
+        string CopyText()
+        {
+            string report = ReportText();
+            if (aiText == null) return report;
+            string t = Crlf(aiText.Trim());
+            if (aiIsTicket) return t + "\r\n\r\n----------\r\n" + report;
+            return report + "\r\n" + L.T("Spiegazione dell'assistente", "Assistant's explanation") + ":\r\n" + t + "\r\n";
+        }
+
+        static string Crlf(string s)
+        {
+            return Regex.Replace(s ?? "", "\r?\n", "\r\n");
+        }
+
+        // ---------- assistente AI ----------
+        void ShowAi(string text, bool hint = false)
+        {
+            if (txtAi == null) return;
+            txtAi.ForeColor = hint ? Color.DimGray : SystemColors.WindowText;
+            txtAi.Text = Crlf(text);
+            txtAi.SelectionStart = txtAi.TextLength;
+            txtAi.ScrollToCaret();
+        }
+
+        static string LangName()
+        {
+            try { return CultureInfo.GetCultureInfo(L.Code).EnglishName; } catch { return "English"; }
+        }
+
+        const string Common =
+            "Words in square brackets in the data (for example [WIFI] or [PUBLIC_IP]) replace private data: copy them exactly when you need " +
+            "them and never use one that does not appear in the data. Do not mention the computer, user or network name unless it helps the user. " +
+            "Rely only on the data provided and never invent values; if the data is not " +
+            "enough to be sure, say so and suggest what to check. Write plain text for a small window: no Markdown headings, bold or tables; " +
+            "use short paragraphs and lists with \"- \".";
+
+        static string ExplainPrompt()
+        {
+            return "You are the network assistant built into AppIP, a small network widget for Windows. You receive the results of an " +
+                   "automatic network diagnosis run on the user's PC. Explain to a non-technical office worker what the results mean and " +
+                   "what they can do about it, step by step, starting from the most likely fix. If everything works, say so briefly. " +
+                   "Keep it under about 150 words. " + Common + " Answer in " + LangName() + ".";
+        }
+
+        static string TicketPrompt()
+        {
+            return "You are the network assistant built into AppIP, a small network widget for Windows. Using the results of an automatic " +
+                   "network diagnosis run on the user's PC, write a support request that the user will send to the IT help desk. Start " +
+                   "with a one-line subject, then describe the problem from the user's point of view (use their description if given), " +
+                   "what the checks found and the most likely cause. Keep it under about 150 words and do not list all the technical " +
+                   "details: the full diagnostic report is attached automatically below your text. " + Common + " Answer in " + LangName() + ".";
+        }
+
+        static string StateWord(DiagState s)
+        {
+            switch (s)
+            {
+                case DiagState.Ok: return "OK";
+                case DiagState.Warn: return "WARNING";
+                case DiagState.Error: return "ERROR";
+                default: return "INFO";
+            }
+        }
+
+        // Dati della diagnosi per l'assistente (in chiaro: l'anonimizzazione si applica dopo)
+        string AiInput()
+        {
+            var sb = new StringBuilder();
+            sb.AppendLine("Automatic network diagnostics on a Windows PC (AppIP " + AppVersion.Text + "), " + runTime.ToString("yyyy-MM-dd HH:mm") + ".");
+            sb.AppendLine("Rule-based conclusion shown to the user: " + conclTitle + " - " + conclText);
+            sb.AppendLine();
+            sb.AppendLine("Checks:");
+            foreach (var c in checks) sb.AppendLine("- " + c.Title + " [" + StateWord(c.State) + "]: " + c.Detail);
+            var p = snap != null ? snap.Primary : null;
+            if (p != null)
+            {
+                sb.AppendLine();
+                sb.AppendLine("Main network adapter:");
+                sb.AppendLine("- " + p.Name + " (" + p.Description + "), " + (p.IsWifi ? "Wi-Fi" : "wired or other"));
+                sb.AppendLine("- IPv4 " + p.IPv4 + ", DHCP " + (p.Dhcp ? "yes" + (p.DhcpServer.Length > 0 ? " (server " + p.DhcpServer + ")" : "") : "no (static)"));
+                sb.AppendLine("- gateway " + p.Gateway + ", DNS " + p.Dns);
+                if (p.IPv6All.Length > 0) sb.AppendLine("- IPv6 " + p.IPv6All);
+                if (p.IsWifi)
+                {
+                    var w = p.Wi;
+                    var parts = new List<string>();
+                    if (!string.IsNullOrEmpty(p.WifiSsid)) parts.Add("network " + p.WifiSsid);
+                    if (p.WifiSignal >= 0) parts.Add("signal " + p.WifiSignal + "%");
+                    if (w != null)
+                    {
+                        if (w.Rssi < 0) parts.Add(w.Rssi + " dBm");
+                        if (w.Band().Length > 0) parts.Add(w.Band());
+                        if (w.Chan() > 0) parts.Add("channel " + w.Chan());
+                        if (w.Gen().Length > 0) parts.Add(w.Gen());
+                        if (w.RxMbps > 0) parts.Add("link " + w.RxMbps + "/" + Math.Max(0, w.TxMbps) + " Mbps");
+                    }
+                    if (parts.Count > 0) sb.AppendLine("- Wi-Fi: " + string.Join(", ", parts));
+                }
+            }
+            if (snap != null && snap.Vpn != null)
+                sb.AppendLine("- VPN adapter: " + snap.Vpn.Name + " (" + snap.Vpn.Description + "), IP " + snap.Vpn.IPv4Plain + ", DNS " + snap.Vpn.Dns);
+            return sb.ToString();
+        }
+
+        Anonymizer BuildAnon()
+        {
+            var a = new Anonymizer();
+            if (snap == null) return a;
+            a.Add(snap.Host, "PC");
+            a.Add(snap.Domain, "DOMAIN");
+            try { a.Add(Environment.UserName, "USER"); } catch { }
+            a.Add(pubIp, "PUBLIC_IP");
+            foreach (var l in snap.All)
+            {
+                if (!string.IsNullOrEmpty(l.WifiSsid)) a.Add(l.WifiSsid, "WIFI");
+                a.Add(l.Mac, "MAC");
+            }
+            return a;
+        }
+
+        // Richiesta da mandare: istruzioni e messaggio (già anonimizzato se richiesto)
+        void BuildRequest(bool ticket, string note, out string sys, out string user, out Anonymizer anon)
+        {
+            anon = AiSettings.Anonymize ? BuildAnon() : null;
+            sys = ticket ? TicketPrompt() : ExplainPrompt();
+            user = (note.Trim().Length > 0 ? "The user describes the problem like this: " + note.Trim() + "\n\n" : "") + AiInput();
+            if (anon != null) user = anon.Apply(user);
+        }
+
+        void RunAi(bool ticket, Button btn)
+        {
+            if (aiCts != null) { aiCts.Cancel(); return; }
+            var prov = AiSettings.CurrentProvider();
+            if (prov == null)
+            {
+                ShowAi(L.T("L'assistente non è configurato: apri Assistente AI... dal menu di AppIP.", "The assistant is not set up: open AI assistant... from the AppIP menu."));
+                return;
+            }
+            string note = "";
+            if (ticket)
+            {
+                note = AskNote();
+                if (note == null) return;
+            }
+            string sys, user; Anonymizer anon;
+            BuildRequest(ticket, note, out sys, out user, out anon);
+            lastSent = SentText(prov, sys, user, anon != null);
+            aiText = null;
+
+            var cts = aiCts = new CancellationTokenSource();
+            string idle = btn.Text;
+            btn.Text = L.T("Interrompi", "Stop");
+            (btn == btnExplain ? btnTicket : btnExplain).Enabled = false;
+            btnStart.Enabled = false;
+            ShowAi(prov == LocalAi.Instance && !LocalAi.Instance.Running
+                ? L.T("Avvio dell'assistente locale: la prima volta può richiedere fino a un minuto...", "Starting the local assistant: the first time it can take up to a minute...")
+                : L.F("{0} sta scrivendo...", "{0} is writing...", prov.Name), true);
+
+            var acc = new StringBuilder();
+            var t = new Thread(delegate ()
+            {
+                var res = prov.Run(AiRequest.Simple(sys, user), delegate (string chunk)
+                {
+                    string shown;
+                    lock (acc) { acc.Append(chunk); shown = acc.ToString(); }
+                    if (anon != null) shown = anon.Restore(shown);
+                    Ui(delegate { if (aiCts == cts) ShowAi(shown); });
+                }, cts.Token);
+                string final = anon != null ? anon.Restore(res.Text) : res.Text;
+                Ui(delegate
+                {
+                    aiCts = null;
+                    btn.Text = idle;
+                    btnExplain.Enabled = btnTicket.Enabled = btnStart.Enabled = true;
+                    if (res.Cancelled) { ShowAi(final + (final.Length > 0 ? "\n\n" : "") + L.T("(interrotto)", "(stopped)")); return; }
+                    if (!res.Ok) { ShowAi(res.Error + (final.Length > 0 ? "\n\n" + final : "")); return; }
+                    string text = final.Trim();
+                    if (res.Truncated) text += "\n\n" + L.T("(risposta troncata)", "(reply cut short)");
+                    aiText = text;
+                    aiIsTicket = ticket;
+                    ShowAi(text);
+                    txtAi.SelectionStart = 0; // a risposta finita si legge dall'inizio
+                    txtAi.ScrollToCaret();
+                    if (ticket)
+                    {
+                        lblTitle.Text = L.T("Segnalazione pronta: Copia report la copia insieme ai dati tecnici.", "Support request ready: Copy report copies it together with the technical details.");
+                        lblTitle.ForeColor = Color.DimGray;
+                    }
+                });
+            });
+            t.IsBackground = true;
+            t.Start();
+        }
+
+        static string SentText(IAiProvider prov, string sys, string user, bool anon)
+        {
+            var sb = new StringBuilder();
+            sb.AppendLine(L.F("Servizio: {0}", "Service: {0}", prov.Name) + (prov.SendsTextOutside ? "" : " " + L.T("(sul PC, i dati non escono)", "(on this PC, data does not leave it)")));
+            sb.AppendLine(anon ? L.T("Anonimizzazione: attiva", "Anonymization: on") : L.T("Anonimizzazione: spenta", "Anonymization: off"));
+            sb.AppendLine();
+            sb.AppendLine("--- " + L.T("Istruzioni", "Instructions") + " ---");
+            sb.AppendLine(sys);
+            sb.AppendLine();
+            sb.AppendLine("--- " + L.T("Messaggio", "Message") + " ---");
+            sb.Append(user);
+            return sb.ToString();
+        }
+
+        // Mostra il testo esatto inviato (o quello che invierebbe Spiega)
+        void ShowSent()
+        {
+            string text = lastSent;
+            if (text == null)
+            {
+                var prov = AiSettings.CurrentProvider();
+                if (prov == null) { ShowAi(L.T("L'assistente non è configurato: apri Assistente AI... dal menu di AppIP.", "The assistant is not set up: open AI assistant... from the AppIP menu.")); return; }
+                string sys, user; Anonymizer anon;
+                BuildRequest(false, "", out sys, out user, out anon);
+                text = SentText(prov, sys, user, anon != null);
+            }
+            using (var f = new Form
+            {
+                Text = L.T("Cosa viene inviato - AppIP", "What is sent - AppIP"), StartPosition = FormStartPosition.CenterParent,
+                Font = Font, Size = new Size((int)(760 * UiFont.Scale * ScreenDpi() / 96f), (int)(600 * UiFont.Scale * ScreenDpi() / 96f)), MinimizeBox = false, ShowInTaskbar = false, TopMost = true, Icon = Icon
+            })
+            {
+                var tb = new TextBox { Multiline = true, ReadOnly = true, ScrollBars = ScrollBars.Vertical, WordWrap = true, Dock = DockStyle.Fill, Text = Crlf(text), BackColor = Color.White, Font = new Font("Segoe UI", UiFont.Pt + 1f) };
+                f.Controls.Add(tb);
+                tb.SelectionStart = 0;
+                f.ShowDialog(this);
+            }
+        }
+
+        // Descrizione facoltativa del problema per la segnalazione; null = annullato
+        string AskNote()
+        {
+            using (var f = new Form
+            {
+                Text = L.T("Prepara segnalazione - AppIP", "Write support request - AppIP"), StartPosition = FormStartPosition.CenterParent,
+                FormBorderStyle = FormBorderStyle.FixedDialog, MaximizeBox = false, MinimizeBox = false, ShowInTaskbar = false, TopMost = true,
+                AutoScaleDimensions = new SizeF(96f, 96f), AutoScaleMode = AutoScaleMode.Dpi, Font = Font, BackColor = Color.White
+            })
+            {
+                var lbl = new Label { Text = L.T("Descrivi il problema con parole tue (facoltativo), ad esempio cosa non funziona e da quando:", "Describe the problem in your own words (optional), for example what does not work and since when:"), AutoSize = false, Location = new Point(16, 12), Size = new Size(440, 40) };
+                var tb = new TextBox { Multiline = true, ScrollBars = ScrollBars.Vertical, Location = new Point(16, 56), Size = new Size(440, 100) };
+                var ok = new Button { Text = L.T("Prepara", "Write"), DialogResult = DialogResult.OK, Location = new Point(260, 168), Size = new Size(96, 30) };
+                var cancel = new Button { Text = L.T("Annulla", "Cancel"), DialogResult = DialogResult.Cancel, Location = new Point(360, 168), Size = new Size(96, 30) };
+                f.Controls.AddRange(new Control[] { lbl, tb, ok, cancel });
+                f.CancelButton = cancel; // Invio nella descrizione va a capo
+                f.ClientSize = new Size(472, 212);
+                f.Scale(new SizeF(UiFont.Scale, UiFont.Scale));
+                return f.ShowDialog(this) == DialogResult.OK ? tb.Text : null;
+            }
         }
 
         // ---------- dati fittizi per gli screenshot (/demo) ----------
