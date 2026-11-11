@@ -490,7 +490,7 @@ namespace AppIP
             menu.Items.Add(new ToolStripMenuItem("AppIP " + AppVersion.Text) { Enabled = false });
             // Compare solo quando c'è una versione più recente
             miUpdateAvail = new ToolStripMenuItem("", null, delegate { OfferUpdate(); }) { Visible = false };
-            miUpdateAvail.Font = new Font(miUpdateAvail.Font, FontStyle.Bold);
+            miUpdateAvail.Font = new Font(menu.Font, FontStyle.Bold); // dal font del menu: la voce, non ancora nel menu, avrebbe quello predefinito (9 pt)
             relabel.Add(delegate { if (updVersion != null) miUpdateAvail.Text = L.F("Aggiorna ad AppIP {0}...", "Update to AppIP {0}...", updVersion); });
             menu.Items.Add(miUpdateAvail);
             menu.Items.Add(new ToolStripSeparator());
