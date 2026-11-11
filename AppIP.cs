@@ -551,14 +551,16 @@ namespace AppIP
             menu.Items.Add(miDetails);
 
             var miLook = Mi("Aspetto", "Appearance", null);
+            // testi scritti per esteso in Mi: così lang-check.ps1 li trova e finiscono nel modello delle traduzioni
+            miTheme = new[]
+            {
+                Mi("Tema automatico", "Automatic theme", null), Mi("Tema scuro", "Dark theme", null), Mi("Tema chiaro", "Light theme", null)
+            };
             string[] themeKeys = { "auto", "dark", "light" };
-            string[] themeIt = { "Tema automatico", "Tema scuro", "Tema chiaro" };
-            string[] themeEn = { "Automatic theme", "Dark theme", "Light theme" };
-            miTheme = new ToolStripMenuItem[3];
             for (int i = 0; i < 3; i++)
             {
                 string key = themeKeys[i];
-                miTheme[i] = Mi(themeIt[i], themeEn[i], delegate { theme = key; ApplyLook(); SaveSettings(); });
+                miTheme[i].Click += delegate { theme = key; ApplyLook(); SaveSettings(); };
                 miTheme[i].Tag = key;
                 miLook.DropDownItems.Add(miTheme[i]);
             }
