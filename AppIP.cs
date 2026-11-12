@@ -309,7 +309,7 @@ namespace AppIP
             var links = new LinkLabel
             {
                 Text = lic + "  ·  GitHub", AutoSize = true, Location = new Point(84, 112),
-                LinkColor = blue, ActiveLinkColor = blue, LinkBehavior = LinkBehavior.HoverUnderline
+                LinkColor = blue, ActiveLinkColor = blue, LinkBehavior = LinkBehavior.AlwaysUnderline
             };
             links.Links.Clear();
             links.Links.Add(0, lic.Length, AppVersion.RepoUrl + "/blob/main/LICENSE");
@@ -490,7 +490,6 @@ namespace AppIP
             menu.Items.Add(new ToolStripMenuItem("AppIP " + AppVersion.Text) { Enabled = false });
             // Compare solo quando c'è una versione più recente
             miUpdateAvail = new ToolStripMenuItem("", null, delegate { OfferUpdate(); }) { Visible = false };
-            miUpdateAvail.Font = new Font(menu.Font, FontStyle.Bold); // dal font del menu: la voce, non ancora nel menu, avrebbe quello predefinito (9 pt)
             relabel.Add(delegate { if (updVersion != null) miUpdateAvail.Text = L.F("Aggiorna ad AppIP {0}...", "Update to AppIP {0}...", updVersion); });
             menu.Items.Add(miUpdateAvail);
             menu.Items.Add(new ToolStripSeparator());

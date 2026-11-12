@@ -359,7 +359,7 @@ namespace AppIP.Setup
             {
                 Text = owner + lic, AutoSize = true, Location = new Point(18, 7), ForeColor = Color.DimGray,
                 LinkColor = Color.FromArgb(37, 99, 235), ActiveLinkColor = Color.FromArgb(37, 99, 235),
-                LinkBehavior = LinkBehavior.HoverUnderline, BackColor = Color.Transparent
+                LinkBehavior = LinkBehavior.AlwaysUnderline, BackColor = Color.Transparent
             };
             credits.LinkArea = new LinkArea(owner.Length, lic.Length);
             credits.LinkClicked += delegate { OpenUrl(AppVersion.RepoUrl + "/blob/main/LICENSE"); };
@@ -367,7 +367,7 @@ namespace AppIP.Setup
             {
                 Text = "GitHub", AutoSize = true, Anchor = AnchorStyles.Top | AnchorStyles.Right,
                 LinkColor = Color.FromArgb(37, 99, 235), ActiveLinkColor = Color.FromArgb(37, 99, 235),
-                LinkBehavior = LinkBehavior.HoverUnderline, BackColor = Color.Transparent
+                LinkBehavior = LinkBehavior.AlwaysUnderline, BackColor = Color.Transparent
             };
             site.LinkClicked += delegate { OpenUrl(AppVersion.RepoUrl); };
             footer.Controls.AddRange(new Control[] { credits, site });

@@ -104,7 +104,7 @@ namespace AppIP
             var lnkDefault = new LinkLabel
             {
                 Text = L.T("Predefinito", "Default"), AutoSize = true, Location = new Point(344, 232),
-                LinkBehavior = LinkBehavior.HoverUnderline
+                LinkBehavior = LinkBehavior.AlwaysUnderline
             };
             lnkDefault.LinkClicked += delegate { txtServer.Text = DefaultServer; };
             var tip = new ToolTip();

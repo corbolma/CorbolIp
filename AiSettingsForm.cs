@@ -90,7 +90,7 @@ namespace AppIP
             localCtl.Add(btnDownload);
             localCtl.Add(bar);
             // sulla stessa riga del pulsante, dove compare la barra durante lo scaricamento
-            lnkRemove = new LinkLabel { Text = "", AutoSize = false, Size = new Size(W - 118, 24), Location = new Point(L1 + 118, y + 4), LinkBehavior = LinkBehavior.HoverUnderline };
+            lnkRemove = new LinkLabel { Text = "", AutoSize = false, Size = new Size(W - 118, 24), Location = new Point(L1 + 118, y + 4), LinkBehavior = LinkBehavior.AlwaysUnderline };
             lnkRemove.LinkClicked += delegate { RemoveFiles(); };
             localCtl.Add(lnkRemove);
             y += 36;
@@ -104,7 +104,7 @@ namespace AppIP
             txtClaudeKey = new TextBox { Location = new Point(L1, y), Width = W, UseSystemPasswordChar = true };
             Row(claudeCtl, L.T("Chiave API:", "API key:"), txtClaudeKey, L0 + 18, y);
             y += 26;
-            var lnkKey = new LinkLabel { Text = L.T("Crea una chiave su console.anthropic.com", "Create a key at console.anthropic.com"), AutoSize = false, Size = new Size(W, 24), Location = new Point(L1, y), LinkBehavior = LinkBehavior.HoverUnderline };
+            var lnkKey = new LinkLabel { Text = L.T("Crea una chiave su console.anthropic.com", "Create a key at console.anthropic.com"), AutoSize = false, Size = new Size(W, 24), Location = new Point(L1, y), LinkBehavior = LinkBehavior.AlwaysUnderline };
             lnkKey.LinkClicked += delegate { try { System.Diagnostics.Process.Start("https://console.anthropic.com/settings/keys"); } catch { } };
             claudeCtl.Add(lnkKey);
             y += 26;

@@ -143,7 +143,7 @@ namespace AppIP
             {
                 btnExplain = new Button { Text = L.T("Spiega", "Explain"), Size = new Size(100, 30), Location = new Point(16, 362), Enabled = false };
                 btnTicket = new Button { Text = L.T("Prepara segnalazione", "Write support request"), Size = new Size(170, 30), Location = new Point(124, 362), Enabled = false };
-                var lnkSent = new LinkLabel { Text = L.T("Cosa viene inviato", "What is sent"), AutoSize = false, Size = new Size(220, 24), Location = new Point(304, 367), LinkBehavior = LinkBehavior.HoverUnderline };
+                var lnkSent = new LinkLabel { Text = L.T("Cosa viene inviato", "What is sent"), AutoSize = false, Size = new Size(220, 24), Location = new Point(304, 367), LinkBehavior = LinkBehavior.AlwaysUnderline };
                 txtAi = new TextBox
                 {
                     Multiline = true, ReadOnly = true, ScrollBars = ScrollBars.Vertical, BackColor = Color.White,
