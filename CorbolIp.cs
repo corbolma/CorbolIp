@@ -423,6 +423,7 @@ namespace CorbolIp
         DateTime lastUpdCheck = DateTime.MinValue;
         bool balloonIsUpdate;
         WinTimer updTimer;
+        TaskbarButton taskbarBtn;   // accende l'icona fissata sulla barra delle applicazioni mentre l'app è aperta
 
         // Dati fittizi per gli screenshot (indirizzi di documentazione RFC 5737 / reti private di esempio).
         void FillDemo(bool withVpn)
@@ -700,6 +701,11 @@ namespace CorbolIp
             if (startCmd == "topmost") Load += delegate { SetTopMost(true); SaveSettings(); };
 
             Load += delegate { UpdateJumpList(); };
+            Load += delegate
+            {
+                taskbarBtn = new TaskbarButton(this, "CorbolIp", Icon, BringToFront, Close);
+                taskbarBtn.Show();
+            };
 
             infoTimer.Interval = 10000;
             infoTimer.Tick += delegate { RefreshInfo(); };
@@ -2072,6 +2078,7 @@ namespace CorbolIp
         {
             SaveSettings();
             if (!demo) ClearJumpList();
+            if (taskbarBtn != null) taskbarBtn.CloseFromApp();
             SystemEvents.UserPreferenceChanged -= OnUserPrefChanged;
             SystemEvents.PowerModeChanged -= OnPowerModeChanged;
             if (!demo && evInit) NetEvents.Add("STOP", L.T("CorbolIp chiuso", "CorbolIp closed"));
