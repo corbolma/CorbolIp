@@ -7,7 +7,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Text.RegularExpressions;
 
-namespace AppIP
+namespace CorbolIp
 {
     class Anonymizer
     {

@@ -1,6 +1,6 @@
 // Registro degli eventi di rete: cadute, cambi di rete, IP, Wi-Fi, VPN, router e Internet che non rispondono
 // (questi solo con il ping attivo), sospensione e ripresa del PC. Non genera traffico: annota quello che il
-// widget vede già. File %APPDATA%\AppIP\events.log, una riga per evento, ultimi 30 giorni.
+// widget vede già. File %APPDATA%\CorbolIp\events.log, una riga per evento, ultimi 30 giorni.
 // Compatibile con il compilatore csc di .NET Framework 4.x (C# 5).
 using System;
 using System.Collections.Generic;
@@ -9,7 +9,7 @@ using System.IO;
 using System.Linq;
 using System.Text;
 
-namespace AppIP
+namespace CorbolIp
 {
     static class NetEvents
     {
@@ -25,7 +25,7 @@ namespace AppIP
 
         public static string FilePath
         {
-            get { return Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "AppIP", "events.log"); }
+            get { return Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "CorbolIp", "events.log"); }
         }
 
         // kind: START, STOP, SLEEP, RESUME, NET, IP, WIFI, GW, VPN, PUBIP, PING

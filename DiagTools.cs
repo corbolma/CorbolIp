@@ -14,7 +14,7 @@ using System.Text;
 using System.Text.RegularExpressions;
 using System.Threading;
 
-namespace AppIP
+namespace CorbolIp
 {
     static class DiagTools
     {
@@ -131,7 +131,7 @@ namespace AppIP
             return new AiToolCall { Name = name, Args = new Dictionary<string, object> { { key, value } } };
         }
 
-        // Controlli di AppIP su un sito, indirizzo web o IP: DNS e risposta web, oppure ping
+        // Controlli di CorbolIp su un sito, indirizzo web o IP: DNS e risposta web, oppure ping
         public static IEnumerable<AiToolCall> ChecksFor(string target)
         {
             if (Ipv4Rx.IsMatch(target) && Ipv4Rx.Match(target).Value == target)
@@ -251,7 +251,7 @@ namespace AppIP
             try
             {
                 var req = (HttpWebRequest)WebRequest.Create(u);
-                req.UserAgent = "AppIP/" + AppVersion.Text;
+                req.UserAgent = "CorbolIp/" + AppVersion.Text;
                 req.Timeout = 10000;
                 req.ReadWriteTimeout = 10000;
                 req.AllowAutoRedirect = false;

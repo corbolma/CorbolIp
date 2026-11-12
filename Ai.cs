@@ -1,4 +1,4 @@
-// Assistente AI: i "provider" che generano il testo (ripresi da AppPad). Si manda un'istruzione di
+// Assistente AI: i "provider" che generano il testo (ripresi da CorbolPad). Si manda un'istruzione di
 // sistema più i messaggi e il testo arriva un pezzo alla volta (streaming).
 //   - Claude: API Anthropic (POST /v1/messages), con la chiave dell'utente.
 //   - Compatibile OpenAI: POST <url>/chat/completions. Copre OpenAI, Mistral, OpenRouter, Groq, i
@@ -17,7 +17,7 @@ using System.Text;
 using System.Threading;
 using System.Web.Script.Serialization;
 
-namespace AppIP
+namespace CorbolIp
 {
     class AiMessage
     {
@@ -166,7 +166,7 @@ namespace AppIP
                     req.Method = "POST";
                     req.ContentType = "application/json";
                     req.Accept = "text/event-stream";
-                    req.UserAgent = "AppIP/" + AppVersion.Text;
+                    req.UserAgent = "CorbolIp/" + AppVersion.Text;
                     req.Timeout = TimeoutMs;
                     req.ReadWriteTimeout = TimeoutMs;
                     req.AllowWriteStreamBuffering = true;
@@ -583,7 +583,7 @@ namespace AppIP
         {
             try { ServicePointManager.SecurityProtocol |= SecurityProtocolType.Tls12; } catch { }
             var req = (HttpWebRequest)WebRequest.Create(BaseUrl.TrimEnd('/') + "/models");
-            req.UserAgent = "AppIP/" + AppVersion.Text;
+            req.UserAgent = "CorbolIp/" + AppVersion.Text;
             req.Timeout = 15000;
             AddHeaders(req);
             WebResponse resp;
@@ -612,6 +612,7 @@ namespace AppIP
     // Chiavi API in settings.txt cifrate con DPAPI: le legge solo lo stesso utente Windows sullo stesso PC
     static class Secret
     {
+        // Non cambia con il nome dell'app (prima AppIP): con questa sono cifrate le chiavi già salvate
         static readonly byte[] Entropy = Encoding.UTF8.GetBytes("AppIP.ai.v1");
 
         public static string Protect(string plain)

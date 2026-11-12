@@ -1,4 +1,4 @@
-// AppIP - widget desktop + icona nella tray: nome macchina, IP locale/pubblico, DNS,
+// CorbolIp - widget desktop + icona nella tray: nome macchina, IP locale/pubblico, DNS,
 // velocità di rete, Wi-Fi, ping, VPN.
 // Compatibile con il compilatore csc di .NET Framework 4.x (C# 5).
 using System;
@@ -20,7 +20,7 @@ using System.Windows.Forms;
 using Microsoft.Win32;
 using WinTimer = System.Windows.Forms.Timer;
 
-namespace AppIP
+namespace CorbolIp
 {
     static class Program
     {
@@ -29,7 +29,7 @@ namespace AppIP
 
         // Identificativo fisso per la barra delle applicazioni: deve coincidere con quello scritto
         // dall'installer nel collegamento del menu Start, così la Jump List appare sull'icona fissata.
-        public const string AppUserModelId = "AppIP.Widget";
+        public const string AppUserModelId = "AppIP.Widget"; // come prima del cambio di nome: le icone già fissate alla barra restano della stessa app
 
         // Comandi da riga di comando (usati anche dalla Jump List della barra delle applicazioni):
         //   (nessuno) / /front  -> mostra il widget e lo porta in primo piano
@@ -47,12 +47,13 @@ namespace AppIP
                 return;
             }
 
+            OldApp.MoveLeftovers(); // dati rimasti nelle cartelle col nome vecchio (AppIP)
             try { SetCurrentProcessExplicitAppUserModelID(AppUserModelId); } catch { }
             string cmd = args.Length > 0 ? args[0].TrimStart('/', '-').ToLowerInvariant() : "front";
             if (cmd != "exit" && cmd != "topmost") cmd = "front";
 
             bool createdNew;
-            using (var mutex = new Mutex(true, "AppIP_SingleInstance", out createdNew))
+            using (var mutex = new Mutex(true, "CorbolIp_SingleInstance", out createdNew))
             {
                 if (!createdNew)
                 {
@@ -247,7 +248,7 @@ namespace AppIP
         public static readonly float Scale = Pt / 9f; // le coordinate delle finestre sono pensate per 9 pt
     }
 
-    // Finestra "Informazioni su AppIP": versione, autore, licenza e link al progetto.
+    // Finestra "Informazioni su CorbolIp": versione, autore, licenza e link al progetto.
     class AboutForm : Form
     {
         static AboutForm open;
@@ -262,7 +263,7 @@ namespace AppIP
 
         AboutForm(Icon icon)
         {
-            Text = L.T("Informazioni su AppIP", "About AppIP");
+            Text = L.T("Informazioni su CorbolIp", "About CorbolIp");
             FormBorderStyle = FormBorderStyle.FixedDialog;
             MaximizeBox = MinimizeBox = false;
             StartPosition = FormStartPosition.CenterScreen;
@@ -278,9 +279,9 @@ namespace AppIP
             var pic = new PictureBox { Location = new Point(20, 20), Size = new Size(48, 48), SizeMode = PictureBoxSizeMode.Zoom };
             try
             {
-                // Le immagini in appip.ico sono PNG: si legge direttamente quella da 64 px
+                // Le immagini in corbolip.ico sono PNG: si legge direttamente quella da 64 px
                 // (Icon.ToBitmap non decodifica bene le voci PNG)
-                using (var st = typeof(AboutForm).Assembly.GetManifestResourceStream("AppIP.appip.ico"))
+                using (var st = typeof(AboutForm).Assembly.GetManifestResourceStream("CorbolIp.corbolip.ico"))
                 using (var ms = new MemoryStream())
                 {
                     st.CopyTo(ms);
@@ -297,7 +298,7 @@ namespace AppIP
                 }
             }
             catch { }
-            var title = new Label { Text = "AppIP " + AppVersion.Text, AutoSize = true, Location = new Point(82, 18), Font = new Font("Segoe UI Semibold", 14f * UiFont.Scale) };
+            var title = new Label { Text = "CorbolIp " + AppVersion.Text, AutoSize = true, Location = new Point(82, 18), Font = new Font("Segoe UI Semibold", 14f * UiFont.Scale) };
             var desc = new Label
             {
                 Text = L.T("IP, nome macchina, DNS, velocità e Wi-Fi sul desktop", "IP, computer name, DNS, speed and Wi-Fi on your desktop"),
@@ -350,8 +351,8 @@ namespace AppIP
         const int WM_NCLBUTTONDOWN = 0xA1;
         const int HTCAPTION = 2;
         const string RunKey = @"Software\Microsoft\Windows\CurrentVersion\Run";
-        const string AppName = "AppIP";
-        public const string EventPrefix = "AppIP_Cmd_";
+        const string AppName = "CorbolIp";
+        public const string EventPrefix = "CorbolIp_Cmd_";
         readonly List<EventWaitHandle> cmdEvents = new List<EventWaitHandle>();
         bool tempFront; // portato in primo piano dalla Jump List, torna sotto quando clicchi altrove
 
@@ -426,7 +427,7 @@ namespace AppIP
         // Dati fittizi per gli screenshot (indirizzi di documentazione RFC 5737 / reti private di esempio).
         void FillDemo(bool withVpn)
         {
-            hostName = "DESKTOP-APPIP";
+            hostName = "DESKTOP-CORBOLIP";
             domain = L.T("esempio.local", "example.local");
             publicIp = "203.0.113.42";
             publicIp6 = "2001:db8:85a3::42";
@@ -462,7 +463,7 @@ namespace AppIP
 
         public WidgetForm(string startCmd, string[] demoArgs = null)
         {
-            settingsPath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "AppIP", "settings.txt");
+            settingsPath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "CorbolIp", "settings.txt");
 
             FormBorderStyle = FormBorderStyle.None;
             ShowInTaskbar = false;
@@ -487,10 +488,10 @@ namespace AppIP
             var menu = new ContextMenuStrip();
             // Font più grande del predefinito (9 pt); i sottomenu e le voci aggiunte dopo lo ereditano
             menu.Font = new Font("Segoe UI", UiFont.Pt);
-            menu.Items.Add(new ToolStripMenuItem("AppIP " + AppVersion.Text) { Enabled = false });
+            menu.Items.Add(new ToolStripMenuItem("CorbolIp " + AppVersion.Text) { Enabled = false });
             // Compare solo quando c'è una versione più recente
             miUpdateAvail = new ToolStripMenuItem("", null, delegate { OfferUpdate(); }) { Visible = false };
-            relabel.Add(delegate { if (updVersion != null) miUpdateAvail.Text = L.F("Aggiorna ad AppIP {0}...", "Update to AppIP {0}...", updVersion); });
+            relabel.Add(delegate { if (updVersion != null) miUpdateAvail.Text = L.F("Aggiorna a CorbolIp {0}...", "Update to CorbolIp {0}...", updVersion); });
             menu.Items.Add(miUpdateAvail);
             menu.Items.Add(new ToolStripSeparator());
             miShow = Mi("Mostra widget", "Show widget", delegate { ToggleWidget(); });
@@ -624,7 +625,7 @@ namespace AppIP
             });
             menu.Items.Add(miUpd);
             menu.Items.Add(new ToolStripSeparator());
-            menu.Items.Add(Mi("Informazioni su AppIP", "About AppIP", delegate { AboutForm.ShowOnce(tray.Icon); }));
+            menu.Items.Add(Mi("Informazioni su CorbolIp", "About CorbolIp", delegate { AboutForm.ShowOnce(tray.Icon); }));
             menu.Items.Add(Mi("Esci", "Exit", delegate { Close(); }));
             ContextMenuStrip = menu;
 
@@ -842,7 +843,7 @@ namespace AppIP
                 });
                 jl.JumpItems.Add(new System.Windows.Shell.JumpTask
                 {
-                    Title = L.T("Esci da AppIP", "Exit AppIP"),
+                    Title = L.T("Esci da CorbolIp", "Exit CorbolIp"),
                     Description = L.T("Chiude l'app se è aperta", "Closes the app if it is running"),
                     ApplicationPath = exe, Arguments = "/exit", IconResourcePath = exe
                 });
@@ -1057,8 +1058,8 @@ namespace AppIP
             if (!evInit)
             {
                 evInit = true;
-                NetEvents.Add("START", p == null ? L.T("AppIP avviato · nessuna rete", "AppIP started · no network")
-                                                 : L.F("AppIP avviato · {0}, IP {1}", "AppIP started · {0}, IP {1}", name, ip)
+                NetEvents.Add("START", p == null ? L.T("CorbolIp avviato · nessuna rete", "CorbolIp started · no network")
+                                                 : L.F("CorbolIp avviato · {0}, IP {1}", "CorbolIp started · {0}, IP {1}", name, ip)
                                                    + (v != null ? " · VPN " + v : ""));
             }
             else
@@ -1352,7 +1353,7 @@ namespace AppIP
                 {
                     var req = (HttpWebRequest)WebRequest.Create(url);
                     req.Timeout = 5000;
-                    req.UserAgent = "AppIP";
+                    req.UserAgent = "CorbolIp";
                     using (var resp = req.GetResponse())
                     using (var sr = new StreamReader(resp.GetResponseStream()))
                     {
@@ -1380,7 +1381,7 @@ namespace AppIP
                     try { ServicePointManager.SecurityProtocol |= SecurityProtocolType.Tls12; } catch { }
                     var req = (HttpWebRequest)WebRequest.Create(AppVersion.RepoUrl.Replace("https://github.com/", "https://api.github.com/repos/") + "/releases/latest");
                     req.Timeout = 10000;
-                    req.UserAgent = "AppIP/" + AppVersion.Text;
+                    req.UserAgent = "CorbolIp/" + AppVersion.Text;
                     req.Accept = "application/vnd.github+json";
                     string json;
                     using (var resp = req.GetResponse())
@@ -1411,18 +1412,18 @@ namespace AppIP
             {
                 bool isNew = updVersion != tag;
                 updVersion = tag; updUrl = url; updSha = sha;
-                miUpdateAvail.Text = L.F("Aggiorna ad AppIP {0}...", "Update to AppIP {0}...", tag);
+                miUpdateAvail.Text = L.F("Aggiorna a CorbolIp {0}...", "Update to CorbolIp {0}...", tag);
                 miUpdateAvail.Visible = true;
                 if (manual) OfferUpdate();
                 else if (isNew)
                 {
-                    tray.ShowBalloonTip(10000, L.F("AppIP {0} disponibile", "AppIP {0} available", tag),
+                    tray.ShowBalloonTip(10000, L.F("CorbolIp {0} disponibile", "CorbolIp {0} available", tag),
                         L.T("Clicca qui per aggiornare.", "Click here to update."), ToolTipIcon.Info);
                     balloonIsUpdate = true;
                 }
             }
             else if (manual)
-                Msg(L.F("Hai già l'ultima versione di AppIP ({0}).", "You already have the latest version of AppIP ({0}).", AppVersion.Text),
+                Msg(L.F("Hai già l'ultima versione di CorbolIp ({0}).", "You already have the latest version of CorbolIp ({0}).", AppVersion.Text),
                     MessageBoxButtons.OK, MessageBoxIcon.Information);
         }
 
@@ -1431,8 +1432,8 @@ namespace AppIP
             if (updVersion == null) return;
             string page = AppVersion.RepoUrl + "/releases/tag/v" + updVersion;
             if (updUrl == null) { OpenUrl(page); return; }
-            var r = Msg(L.F("È disponibile AppIP {0} (installata: {1}).\n\nScaricare e installare ora? L'installer chiuderà AppIP durante l'aggiornamento; le impostazioni restano.\n\nNovità: {2}",
-                            "AppIP {0} is available (installed: {1}).\n\nDownload and install it now? The installer will close AppIP during the update; your settings are kept.\n\nWhat's new: {2}",
+            var r = Msg(L.F("È disponibile CorbolIp {0} (installata: {1}).\n\nScaricare e installare ora? L'installer chiuderà CorbolIp durante l'aggiornamento; le impostazioni restano.\n\nNovità: {2}",
+                            "CorbolIp {0} is available (installed: {1}).\n\nDownload and install it now? The installer will close CorbolIp during the update; your settings are kept.\n\nWhat's new: {2}",
                             updVersion, AppVersion.Text, page), MessageBoxButtons.YesNo, MessageBoxIcon.Information);
             if (r == DialogResult.Yes) DownloadUpdate(updUrl, updSha, updVersion, page);
         }
@@ -1440,17 +1441,17 @@ namespace AppIP
         void DownloadUpdate(string url, string sha, string ver, string page)
         {
             balloonIsUpdate = false;
-            tray.ShowBalloonTip(3000, "AppIP", L.F("Download di AppIP {0} in corso...", "Downloading AppIP {0}...", ver), ToolTipIcon.Info);
+            tray.ShowBalloonTip(3000, "CorbolIp", L.F("Download di CorbolIp {0} in corso...", "Downloading CorbolIp {0}...", ver), ToolTipIcon.Info);
             ThreadPool.QueueUserWorkItem(delegate
             {
-                string file = Path.Combine(Path.GetTempPath(), "AppIP-Setup-" + ver + ".exe");
+                string file = Path.Combine(Path.GetTempPath(), "CorbolIp-Setup-" + ver + ".exe");
                 string err = null;
                 try
                 {
                     try { ServicePointManager.SecurityProtocol |= SecurityProtocolType.Tls12; } catch { }
                     using (var wc = new WebClient())
                     {
-                        wc.Headers[HttpRequestHeader.UserAgent] = "AppIP/" + AppVersion.Text;
+                        wc.Headers[HttpRequestHeader.UserAgent] = "CorbolIp/" + AppVersion.Text;
                         wc.DownloadFile(url, file);
                     }
                     if (sha != null)
@@ -1494,7 +1495,7 @@ namespace AppIP
             {
                 owner.Show();
                 owner.Activate();
-                return MessageBox.Show(owner, text, "AppIP", buttons, icon);
+                return MessageBox.Show(owner, text, "CorbolIp", buttons, icon);
             }
         }
 
@@ -1578,7 +1579,7 @@ namespace AppIP
             {
                 Clipboard.SetText(BuildText());
                 balloonIsUpdate = false;
-                tray.ShowBalloonTip(1500, "AppIP", L.T("Informazioni copiate negli appunti", "Information copied to clipboard"), ToolTipIcon.Info);
+                tray.ShowBalloonTip(1500, "CorbolIp", L.T("Informazioni copiate negli appunti", "Information copied to clipboard"), ToolTipIcon.Info);
             }
             catch { }
         }
@@ -1883,10 +1884,10 @@ namespace AppIP
         // ===================== Icona =====================
         static Icon MakeIcon()
         {
-            // Icona incorporata (appip.ico) alla dimensione giusta per la tray e il DPI corrente
+            // Icona incorporata (corbolip.ico) alla dimensione giusta per la tray e il DPI corrente
             try
             {
-                using (var st = typeof(WidgetForm).Assembly.GetManifestResourceStream("AppIP.appip.ico"))
+                using (var st = typeof(WidgetForm).Assembly.GetManifestResourceStream("CorbolIp.corbolip.ico"))
                     if (st != null) return new Icon(st, SystemInformation.SmallIconSize);
             }
             catch { }
@@ -2073,7 +2074,7 @@ namespace AppIP
             if (!demo) ClearJumpList();
             SystemEvents.UserPreferenceChanged -= OnUserPrefChanged;
             SystemEvents.PowerModeChanged -= OnPowerModeChanged;
-            if (!demo && evInit) NetEvents.Add("STOP", L.T("AppIP chiuso", "AppIP closed"));
+            if (!demo && evInit) NetEvents.Add("STOP", L.T("CorbolIp chiuso", "CorbolIp closed"));
             tray.Visible = false;
             tray.Dispose();
             base.OnFormClosing(e);

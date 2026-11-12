@@ -1,4 +1,4 @@
-"""Salva ogni giorno le statistiche di AppIP nel ramo `stats`.
+"""Salva ogni giorno le statistiche di CorbolIp nel ramo `stats`.
 
 - downloads.csv: contatore cumulativo dei download di ogni file allegato alle release
 - traffic.csv:   visite e clone giornalieri (solo se è configurato il secret TRAFFIC_TOKEN)
@@ -20,7 +20,7 @@ def api(path, token):
             "Authorization": "Bearer " + token,
             "Accept": "application/vnd.github+json",
             "X-GitHub-Api-Version": "2022-11-28",
-            "User-Agent": "appip-stats",
+            "User-Agent": "corbolip-stats",
         },
     )
     with urllib.request.urlopen(req, timeout=30) as r:
@@ -104,7 +104,7 @@ for (d, tag, name), r in downloads.items():
     if d == today:
         latest[(tag, name)] = int(r[3])
 
-lines = ["# Statistiche AppIP", "", "Aggiornato il %s (UTC) dalla GitHub Action *Statistiche download*." % today, ""]
+lines = ["# Statistiche CorbolIp", "", "Aggiornato il %s (UTC) dalla GitHub Action *Statistiche download*." % today, ""]
 lines += ["## Download totali per file", "", "| Versione | File | Download |", "|---|---|---:|"]
 for (tag, name), n in sorted(latest.items(), reverse=True):
     lines.append("| %s | %s | %d |" % (tag, name, n))

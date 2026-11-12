@@ -1,5 +1,5 @@
 @echo off
-rem Crea dist\AppIP-Setup-X.Y.Z.exe: compila AppIP.exe e lo incorpora nell'installer.
+rem Crea dist\CorbolIp-Setup-X.Y.Z.exe: compila CorbolIp.exe e lo incorpora nell'installer.
 rem   build-installer.bat            -> usa la versione attuale di Version.cs
 rem   build-installer.bat patch      -> incrementa 1.0.0 -> 1.0.1 (anche: minor, major)
 rem   build-installer.bat 2.0.0      -> imposta una versione esplicita
@@ -18,14 +18,14 @@ if not exist "%CSC%" set CSC=%WINDIR%\Microsoft.NET\Framework\v4.0.30319\csc.exe
 if not exist dist mkdir dist
 rem Stesse traduzioni dell'app (lang\*.txt, tranne _template.txt)
 set LANGRES=
-for %%F in (lang\*.txt) do if /i not "%%~nF"=="_template" call set LANGRES=%%LANGRES%% /resource:"%%F",AppIP.lang.%%~nF.txt
+for %%F in (lang\*.txt) do if /i not "%%~nF"=="_template" call set LANGRES=%%LANGRES%% /resource:"%%F",CorbolIp.lang.%%~nF.txt
 
-"%CSC%" /nologo /codepage:65001 /target:winexe /optimize+ /out:dist\AppIP-Setup-%VER%.exe ^
-  /win32icon:appip.ico /win32manifest:setup.manifest /resource:AppIP.exe,AppIP.payload ^
+"%CSC%" /nologo /codepage:65001 /target:winexe /optimize+ /out:dist\CorbolIp-Setup-%VER%.exe ^
+  /win32icon:corbolip.ico /win32manifest:setup.manifest /resource:CorbolIp.exe,CorbolIp.payload ^
   /r:System.Windows.Forms.dll /r:System.Drawing.dll /r:System.Core.dll /r:Microsoft.CSharp.dll ^
-  Setup.cs Version.cs Lang.cs %LANGRES%
+  Setup.cs Version.cs Lang.cs OldApp.cs %LANGRES%
 if errorlevel 1 (
   echo Compilazione installer fallita.
   exit /b 1
 )
-echo Creato dist\AppIP-Setup-%VER%.exe
+echo Creato dist\CorbolIp-Setup-%VER%.exe

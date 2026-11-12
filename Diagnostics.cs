@@ -19,7 +19,7 @@ using System.Text.RegularExpressions;
 using System.Threading;
 using System.Windows.Forms;
 
-namespace AppIP
+namespace CorbolIp
 {
     enum DiagState { Wait, Running, Ok, Info, Warn, Error }
 
@@ -92,7 +92,7 @@ namespace AppIP
         {
             getSnapshot = snapshot;
             this.demo = demo;
-            Text = L.T("Diagnosi rete - AppIP", "Network diagnostics - AppIP");
+            Text = L.T("Diagnosi rete - CorbolIp", "Network diagnostics - CorbolIp");
             FormBorderStyle = FormBorderStyle.FixedDialog;
             MaximizeBox = false;
             StartPosition = FormStartPosition.CenterScreen;
@@ -449,7 +449,7 @@ namespace AppIP
             Set(cDns, DiagState.Running, s.Dns.Length > 0 ? s.Dns + "..." : "...");
             // Nome casuale: non può essere nella cache di Windows, quindi il server DNS deve rispondere davvero.
             // "Nome inesistente" va bene: è una risposta del server.
-            string rnd = "appip-" + Guid.NewGuid().ToString("N").Substring(0, 10) + "." + DnsDomain;
+            string rnd = "corbolip-" + Guid.NewGuid().ToString("N").Substring(0, 10) + "." + DnsDomain;
             SocketError err; int ms;
             Resolve(rnd, 8000, out err, out ms);
             bool answered = (err == SocketError.Success || err == SocketError.HostNotFound) && ms < 5000;
@@ -467,7 +467,7 @@ namespace AppIP
         static HttpWebRequest NewRequest(string url)
         {
             var req = (HttpWebRequest)WebRequest.Create(url);
-            req.UserAgent = "AppIP/" + AppVersion.Text;
+            req.UserAgent = "CorbolIp/" + AppVersion.Text;
             req.Timeout = 8000;
             req.ReadWriteTimeout = 8000;
             req.AllowAutoRedirect = false;
@@ -682,7 +682,7 @@ namespace AppIP
         string ReportText()
         {
             var sb = new StringBuilder();
-            sb.AppendLine(L.T("Diagnosi rete", "Network diagnostics") + " - AppIP " + AppVersion.Text + " - " + runTime.ToString("g"));
+            sb.AppendLine(L.T("Diagnosi rete", "Network diagnostics") + " - CorbolIp " + AppVersion.Text + " - " + runTime.ToString("g"));
             sb.AppendLine(L.T("Esito", "Result") + ": " + conclTitle);
             sb.AppendLine(conclText);
             sb.AppendLine();
@@ -749,7 +749,7 @@ namespace AppIP
 
         static string ExplainPrompt(bool tools)
         {
-            return "You are the network assistant built into AppIP, a small network widget for Windows. You receive the results of an " +
+            return "You are the network assistant built into CorbolIp, a small network widget for Windows. You receive the results of an " +
                    "automatic network diagnosis run on the user's PC. Explain to a non-technical office worker what the results mean and " +
                    "what they can do about it, step by step, starting from the most likely fix. If everything works, say so briefly. " +
                    "Keep it under about 150 words. " + Common + (tools ? " " + ToolsHelp : "") + " Answer in " + LangName() + ".";
@@ -757,7 +757,7 @@ namespace AppIP
 
         static string TicketPrompt(bool tools)
         {
-            return "You are the network assistant built into AppIP, a small network widget for Windows. Using the results of an automatic " +
+            return "You are the network assistant built into CorbolIp, a small network widget for Windows. Using the results of an automatic " +
                    "network diagnosis run on the user's PC, write a support request that the user will send to the IT help desk. Start " +
                    "with a one-line subject, then describe the problem from the user's point of view (use their description if given), " +
                    "what the checks found and the most likely cause. Keep it under about 150 words and do not list all the technical " +
@@ -779,7 +779,7 @@ namespace AppIP
         string AiInput()
         {
             var sb = new StringBuilder();
-            sb.AppendLine("Automatic network diagnostics on a Windows PC (AppIP " + AppVersion.Text + "), " + runTime.ToString("yyyy-MM-dd HH:mm") + ".");
+            sb.AppendLine("Automatic network diagnostics on a Windows PC (CorbolIp " + AppVersion.Text + "), " + runTime.ToString("yyyy-MM-dd HH:mm") + ".");
             sb.AppendLine("Rule-based conclusion shown to the user: " + conclTitle + " - " + conclText);
             sb.AppendLine();
             sb.AppendLine("Checks:");
@@ -842,7 +842,7 @@ namespace AppIP
 
         // Richiesta da mandare: istruzioni e messaggio (già anonimizzato se richiesto)
         // L'assistente locale (modello piccolo) non usa gli strumenti: nelle prove diceva di aver controllato senza farlo.
-        // I siti citati dall'utente li controlla comunque AppIP (vedi RunAi).
+        // I siti citati dall'utente li controlla comunque CorbolIp (vedi RunAi).
         // Gli strumenti passano solo dalle API (Claude, compatibili OpenAI); Claude Code parte senza strumenti.
         static bool UsesTools(IAiProvider prov) { return prov is AiHttpProvider; }
 
@@ -860,7 +860,7 @@ namespace AppIP
             var prov = AiSettings.CurrentProvider();
             if (prov == null)
             {
-                ShowAi(L.T("L'assistente non è configurato: apri Assistente AI... dal menu di AppIP.", "The assistant is not set up: open AI assistant... from the AppIP menu."));
+                ShowAi(L.T("L'assistente non è configurato: apri Assistente AI... dal menu di CorbolIp.", "The assistant is not set up: open AI assistant... from the CorbolIp menu."));
                 return;
             }
             string note = "";
@@ -942,13 +942,13 @@ namespace AppIP
                         pre.AppendLine("- " + label + ": " + outp.Trim());
                     }
                     lock (acc) acc.Append("\n");
-                    string extra = "\n\nChecks that AppIP ran on what the user mentioned:\n" + pre;
+                    string extra = "\n\nChecks that CorbolIp ran on what the user mentioned:\n" + pre;
                     if (anon != null) extra = anon.Apply(extra);
                     req.Messages[0].Text += extra;
                     lock (sentLog) sentLog.Append(extra);
                 }
                 int keep;
-                lock (acc) keep = acc.Length; // fin qui: i controlli di AppIP, da tenere se l'assistente ricomincia
+                lock (acc) keep = acc.Length; // fin qui: i controlli di CorbolIp, da tenere se l'assistente ricomincia
                 req.OnRestart = delegate
                 {
                     lock (acc) { acc.Length = keep; acc.Append(L.T("(l'assistente locale si è chiuso: riparte e ricomincia la risposta...)", "(the local assistant closed: restarting the reply...)") + "\n"); }
@@ -1015,14 +1015,14 @@ namespace AppIP
             if (text == null)
             {
                 var prov = AiSettings.CurrentProvider();
-                if (prov == null) { ShowAi(L.T("L'assistente non è configurato: apri Assistente AI... dal menu di AppIP.", "The assistant is not set up: open AI assistant... from the AppIP menu.")); return; }
+                if (prov == null) { ShowAi(L.T("L'assistente non è configurato: apri Assistente AI... dal menu di CorbolIp.", "The assistant is not set up: open AI assistant... from the CorbolIp menu.")); return; }
                 string sys, user; Anonymizer anon;
                 BuildRequest(false, "", UsesTools(prov), out sys, out user, out anon);
                 text = SentText(prov, sys, user, anon != null);
             }
             using (var f = new Form
             {
-                Text = L.T("Cosa viene inviato - AppIP", "What is sent - AppIP"), StartPosition = FormStartPosition.CenterParent,
+                Text = L.T("Cosa viene inviato - CorbolIp", "What is sent - CorbolIp"), StartPosition = FormStartPosition.CenterParent,
                 Font = Font, Size = new Size((int)(760 * UiFont.Scale * ScreenDpi() / 96f), (int)(600 * UiFont.Scale * ScreenDpi() / 96f)), MinimizeBox = false, ShowInTaskbar = false, TopMost = true, Icon = Icon
             })
             {
@@ -1038,7 +1038,7 @@ namespace AppIP
         {
             using (var f = new Form
             {
-                Text = L.T("Prepara segnalazione - AppIP", "Write support request - AppIP"), StartPosition = FormStartPosition.CenterParent,
+                Text = L.T("Prepara segnalazione - CorbolIp", "Write support request - CorbolIp"), StartPosition = FormStartPosition.CenterParent,
                 FormBorderStyle = FormBorderStyle.FixedDialog, MaximizeBox = false, MinimizeBox = false, ShowInTaskbar = false, TopMost = true,
                 AutoScaleDimensions = new SizeF(96f, 96f), AutoScaleMode = AutoScaleMode.Dpi, Font = Font, BackColor = Color.White
             })

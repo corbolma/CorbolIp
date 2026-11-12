@@ -19,7 +19,7 @@ using System.Text.RegularExpressions;
 using System.Threading;
 using System.Windows.Forms;
 
-namespace AppIP
+namespace CorbolIp
 {
     class SpeedTestForm : Form
     {
@@ -63,7 +63,7 @@ namespace AppIP
         {
             this.getServer = getServer;
             this.setServer = setServer;
-            Text = L.T("Test velocità - AppIP", "Speed test - AppIP");
+            Text = L.T("Test velocità - CorbolIp", "Speed test - CorbolIp");
             FormBorderStyle = FormBorderStyle.FixedDialog;
             MaximizeBox = false;
             StartPosition = FormStartPosition.CenterScreen;
@@ -487,7 +487,7 @@ namespace AppIP
             // parametro casuale per evitare cache intermedie (proxy aziendali)
             url += (url.Contains("?") ? "&" : "?") + "r=" + Guid.NewGuid().ToString("N").Substring(0, 8);
             var req = (HttpWebRequest)WebRequest.Create(url);
-            req.UserAgent = "AppIP/" + AppVersion.Text;
+            req.UserAgent = "CorbolIp/" + AppVersion.Text;
             req.Timeout = 10000;
             req.ReadWriteTimeout = 10000;
             req.KeepAlive = true;

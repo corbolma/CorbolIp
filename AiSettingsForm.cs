@@ -8,7 +8,7 @@ using System.Linq;
 using System.Threading;
 using System.Windows.Forms;
 
-namespace AppIP
+namespace CorbolIp
 {
     class AiSettingsForm : Form
     {
@@ -50,7 +50,7 @@ namespace AppIP
         {
             this.changed = changed;
             snapshot = new Dictionary<string, string>(Settings.Values);
-            Text = L.T("Assistente AI - AppIP", "AI assistant - AppIP");
+            Text = L.T("Assistente AI - CorbolIp", "AI assistant - CorbolIp");
             FormBorderStyle = FormBorderStyle.FixedDialog;
             MaximizeBox = MinimizeBox = false;
             StartPosition = FormStartPosition.CenterScreen;
@@ -272,7 +272,7 @@ namespace AppIP
             btnDownload.Text = L.T("Scarica", "Download");
             if (mp != null && llama)
             {
-                lblLocal.Text = L.T("Pronto.", "Ready.") + (AiDownloader.FromAppPad(mp) ? " " + L.T("Usa i file già scaricati da AppPad.", "Uses the files already downloaded by AppPad.") : "");
+                lblLocal.Text = L.T("Pronto.", "Ready.") + (AiDownloader.FromCorbolPad(mp) ? " " + L.T("Usa i file già scaricati da CorbolPad.", "Uses the files already downloaded by CorbolPad.") : "");
                 lblLocal.ForeColor = OkColor;
                 btnDownload.Visible = false;
             }
@@ -319,7 +319,7 @@ namespace AppIP
         void RemoveFiles()
         {
             if (downloader.Busy) return;
-            if (MessageBox.Show(this, L.T("Eliminare modello e llama-server scaricati da AppIP? Quelli di AppPad restano.", "Delete the model and llama-server downloaded by AppIP? AppPad's files stay."),
+            if (MessageBox.Show(this, L.T("Eliminare modello e llama-server scaricati da CorbolIp? Quelli di CorbolPad restano.", "Delete the model and llama-server downloaded by CorbolIp? CorbolPad's files stay."),
                     Text, MessageBoxButtons.YesNo, MessageBoxIcon.Question) != DialogResult.Yes) return;
             LocalAi.Instance.Stop();
             AiDownloader.RemoveAll();

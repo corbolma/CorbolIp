@@ -1,7 +1,7 @@
 # Translations
 
-AppIP is available in **Italian** and **English** (written in the source code).
-Any other language is a plain text file in this folder, embedded into `AppIP.exe` and the installer at build time.
+CorbolIp is available in **Italian** and **English** (written in the source code).
+Any other language is a plain text file in this folder, embedded into `CorbolIp.exe` and the installer at build time.
 No programming needed: translations are very welcome as pull requests.
 
 ## Add a language

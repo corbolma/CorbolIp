@@ -1,7 +1,7 @@
-// Installer di AppIP: un solo exe che contiene AppIP.exe.
-// Installa per l'utente corrente (nessun permesso di amministratore) in %LOCALAPPDATA%\Programs\AppIP.
-//   AppIP-Setup.exe              -> finestra di installazione / aggiornamento
-//   AppIP-Setup.exe /silent      -> installazione silenziosa (avvio con Windows attivo, poi avvia l'app)
+// Installer di CorbolIp: un solo exe che contiene CorbolIp.exe.
+// Installa per l'utente corrente (nessun permesso di amministratore) in %LOCALAPPDATA%\Programs\CorbolIp.
+//   CorbolIp-Setup.exe              -> finestra di installazione / aggiornamento
+//   CorbolIp-Setup.exe /silent      -> installazione silenziosa (avvio con Windows attivo, poi avvia l'app)
 //   Uninstall.exe /uninstall     -> disinstallazione (registrata in Impostazioni > App)
 using System;
 using System.Diagnostics;
@@ -14,9 +14,9 @@ using System.Threading;
 using System.Windows.Forms;
 using Microsoft.Win32;
 
-[assembly: AssemblyTitle("Installazione AppIP")]
+[assembly: AssemblyTitle("Installazione CorbolIp")]
 
-namespace AppIP.Setup
+namespace CorbolIp.Setup
 {
     static class Program
     {
@@ -36,7 +36,7 @@ namespace AppIP.Setup
                     // In silenzioso non si torna mai a una versione più vecchia, salvo /force.
                     var inst = Installer.InstalledVersion();
                     if (inst != null && inst > Installer.Current && !has("/force")) return 3;
-                    Installer.Install(Installer.StartupEnabled(), false, true);
+                    Installer.Install(Installer.StartupEnabled(), Installer.DesktopShortcutExists(), true);
                     return 0;
                 }
                 Application.Run(new SetupForm());
@@ -44,7 +44,7 @@ namespace AppIP.Setup
             }
             catch (Exception ex)
             {
-                if (!silent) MessageBox.Show(L.T("Errore", "Error") + ": " + ex.Message, "AppIP", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                if (!silent) MessageBox.Show(L.T("Errore", "Error") + ": " + ex.Message, "CorbolIp", MessageBoxButtons.OK, MessageBoxIcon.Error);
                 return 2;
             }
         }
@@ -53,21 +53,21 @@ namespace AppIP.Setup
     static class Installer
     {
         const string RunKey = @"Software\Microsoft\Windows\CurrentVersion\Run";
-        const string UninstKey = @"Software\Microsoft\Windows\CurrentVersion\Uninstall\AppIP";
+        const string UninstKey = @"Software\Microsoft\Windows\CurrentVersion\Uninstall\CorbolIp";
 
         public static readonly string InstallDir = Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Programs", "AppIP");
-        public static readonly string ExePath = Path.Combine(InstallDir, "AppIP.exe");
+            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Programs", "CorbolIp");
+        public static readonly string ExePath = Path.Combine(InstallDir, "CorbolIp.exe");
         public static readonly string UninstallerPath = Path.Combine(InstallDir, "Uninstall.exe");
-        static readonly string StartMenuLnk = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.Programs), "AppIP.lnk");
-        static readonly string DesktopLnk = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.DesktopDirectory), "AppIP.lnk");
+        static readonly string StartMenuLnk = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.Programs), "CorbolIp.lnk");
+        static readonly string DesktopLnk = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.DesktopDirectory), "CorbolIp.lnk");
 
         public static readonly Version Current = Version.Parse(AppVersion.Text);
 
         // Versione realmente installata: letta dall'exe (non solo dal registro), null se non installata.
         public static Version InstalledVersion()
         {
-            if (!File.Exists(ExePath)) return null;
+            if (!File.Exists(ExePath)) return OldApp.InstalledVersion(); // installata col nome vecchio, o null
             try
             {
                 var fv = FileVersionInfo.GetVersionInfo(ExePath);
@@ -87,17 +87,25 @@ namespace AppIP.Setup
 
         public static bool StartupEnabled()
         {
+            if (!File.Exists(ExePath) && OldApp.Installed) return OldApp.StartupEnabled(); // aggiornamento dal nome vecchio
             using (var k = Registry.CurrentUser.OpenSubKey(RunKey))
-                return k == null || InstalledVersion() == null || k.GetValue("AppIP") != null;
+                return k == null || InstalledVersion() == null || k.GetValue("CorbolIp") != null;
         }
 
-        // Chiude AppIP se è aperta (usa il comando di uscita dell'app, così pulisce anche la Jump List).
+        // Collegamento sul desktop già presente (anche col nome vecchio): negli aggiornamenti resta
+        public static bool DesktopShortcutExists()
+        {
+            return File.Exists(DesktopLnk) || (!File.Exists(ExePath) && File.Exists(OldApp.DesktopLnk));
+        }
+
+        // Chiude CorbolIp se è aperta (usa il comando di uscita dell'app, così pulisce anche la Jump List).
         public static void CloseRunning()
         {
+            OldApp.CloseRunning("AppIP_Cmd_exit"); // la versione col nome vecchio
             int session = Process.GetCurrentProcess().SessionId;
-            Func<Process[]> mine = () => Process.GetProcessesByName("AppIP").Where(p => p.SessionId == session).ToArray();
+            Func<Process[]> mine = () => Process.GetProcessesByName("CorbolIp").Where(p => p.SessionId == session).ToArray();
             if (mine().Length == 0) return;
-            try { EventWaitHandle.OpenExisting("AppIP_Cmd_exit").Set(); } catch { }
+            try { EventWaitHandle.OpenExisting("CorbolIp_Cmd_exit").Set(); } catch { }
             var until = DateTime.Now.AddSeconds(5);
             while (mine().Length > 0 && DateTime.Now < until) Thread.Sleep(200);
             foreach (var p in mine())
@@ -107,11 +115,14 @@ namespace AppIP.Setup
         public static void Install(bool startup, bool desktop, bool launch)
         {
             CloseRunning();
+            // Dal nome vecchio: dati nelle cartelle nuove, vecchia installazione tolta (le scelte sono già state lette)
+            OldApp.MoveData();
+            OldApp.RemoveInstall();
             Directory.CreateDirectory(InstallDir);
 
-            using (var src = Assembly.GetExecutingAssembly().GetManifestResourceStream("AppIP.payload"))
+            using (var src = Assembly.GetExecutingAssembly().GetManifestResourceStream("CorbolIp.payload"))
             {
-                if (src == null) throw new InvalidOperationException("pacchetto AppIP.exe mancante nell'installer");
+                if (src == null) throw new InvalidOperationException("pacchetto CorbolIp.exe mancante nell'installer");
                 string tmp = ExePath + ".new";
                 using (var dst = File.Create(tmp)) src.CopyTo(dst);
                 if (File.Exists(ExePath)) File.Delete(ExePath);
@@ -129,13 +140,13 @@ namespace AppIP.Setup
 
             using (var k = Registry.CurrentUser.CreateSubKey(RunKey))
             {
-                if (startup) k.SetValue("AppIP", "\"" + ExePath + "\"");
-                else k.DeleteValue("AppIP", false);
+                if (startup) k.SetValue("CorbolIp", "\"" + ExePath + "\"");
+                else k.DeleteValue("CorbolIp", false);
             }
 
             using (var k = Registry.CurrentUser.CreateSubKey(UninstKey))
             {
-                k.SetValue("DisplayName", "AppIP");
+                k.SetValue("DisplayName", "CorbolIp");
                 k.SetValue("DisplayVersion", AppVersion.Text);
                 k.SetValue("VersionMajor", Current.Major, RegistryValueKind.DWord);
                 k.SetValue("VersionMinor", Current.Minor, RegistryValueKind.DWord);
@@ -150,32 +161,33 @@ namespace AppIP.Setup
                 k.SetValue("NoRepair", 1, RegistryValueKind.DWord);
             }
 
+            RetargetPins();
             if (launch) Process.Start(new ProcessStartInfo(ExePath) { WorkingDirectory = InstallDir });
         }
 
         public static bool Uninstall(bool silent)
         {
-            if (!silent && MessageBox.Show(L.T("Vuoi disinstallare AppIP?", "Do you want to uninstall AppIP?"), L.T("Disinstalla AppIP", "Uninstall AppIP"),
+            if (!silent && MessageBox.Show(L.T("Vuoi disinstallare CorbolIp?", "Do you want to uninstall CorbolIp?"), L.T("Disinstalla CorbolIp", "Uninstall CorbolIp"),
                     MessageBoxButtons.YesNo, MessageBoxIcon.Question) != DialogResult.Yes)
                 return false;
 
             CloseRunning();
             foreach (var f in new[] { StartMenuLnk, DesktopLnk })
                 try { if (File.Exists(f)) File.Delete(f); } catch { }
-            try { using (var k = Registry.CurrentUser.OpenSubKey(RunKey, true)) if (k != null) k.DeleteValue("AppIP", false); } catch { }
+            try { using (var k = Registry.CurrentUser.OpenSubKey(RunKey, true)) if (k != null) k.DeleteValue("CorbolIp", false); } catch { }
             try { Registry.CurrentUser.DeleteSubKeyTree(UninstKey, false); } catch { }
             try
             {
-                string settings = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "AppIP");
+                string settings = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "CorbolIp");
                 if (Directory.Exists(settings)) Directory.Delete(settings, true);
             }
             catch { }
             try { if (File.Exists(ExePath)) File.Delete(ExePath); } catch { }
 
             // L'uninstaller gira dalla cartella da eliminare: la cancella un cmd dopo la nostra uscita.
-            // Con lei va anche %LOCALAPPDATA%\AppIP (modelli dell'assistente locale, GB): llama-server si chiude
-            // con AppIP, quindi qualche secondo dopo i file non sono più in uso. Quelli di AppPad restano.
-            string aiData = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "AppIP");
+            // Con lei va anche %LOCALAPPDATA%\CorbolIp (modelli dell'assistente locale, GB): llama-server si chiude
+            // con CorbolIp, quindi qualche secondo dopo i file non sono più in uso. Quelli di CorbolPad restano.
+            string aiData = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "CorbolIp");
             Process.Start(new ProcessStartInfo("cmd.exe",
                 "/c ping -n 3 127.0.0.1 >nul & rmdir /s /q \"" + InstallDir + "\" & rmdir /s /q \"" + aiData + "\"")
             {
@@ -185,12 +197,42 @@ namespace AppIP.Setup
                 WorkingDirectory = Path.GetTempPath()
             });
 
-            if (!silent) MessageBox.Show(L.T("AppIP è stata disinstallata.", "AppIP has been uninstalled."), L.T("Disinstalla AppIP", "Uninstall AppIP"), MessageBoxButtons.OK, MessageBoxIcon.Information);
+            if (!silent) MessageBox.Show(L.T("CorbolIp è stata disinstallata.", "CorbolIp has been uninstalled."), L.T("Disinstalla CorbolIp", "Uninstall CorbolIp"), MessageBoxButtons.OK, MessageBoxIcon.Information);
             return true;
         }
 
-        // Deve coincidere con Program.AppUserModelId in AppIP.cs
-        const string AppUserModelId = "AppIP.Widget";
+        // Icone fissate alla barra delle applicazioni che aprono l'exe col nome vecchio: ora aprono quello nuovo
+        // (stesso AppUserModelID, quindi l'icona fissata resta quella della finestra aperta)
+        static void RetargetPins()
+        {
+            string dir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
+                @"Microsoft\Internet Explorer\Quick Launch\User Pinned\TaskBar");
+            if (!Directory.Exists(dir)) return;
+            foreach (var lnk in Directory.GetFiles(dir, "*.lnk"))
+            {
+                IShellLinkW link = null;
+                try
+                {
+                    link = (IShellLinkW)new CShellLink();
+                    var pf = (System.Runtime.InteropServices.ComTypes.IPersistFile)link;
+                    pf.Load(lnk, 2 /* STGM_READWRITE */);
+                    var sb = new System.Text.StringBuilder(1024);
+                    link.GetPath(sb, sb.Capacity, IntPtr.Zero, 0);
+                    if (string.Equals(sb.ToString(), OldApp.ExePath, StringComparison.OrdinalIgnoreCase))
+                    {
+                        link.SetPath(ExePath);
+                        link.SetWorkingDirectory(InstallDir);
+                        link.SetIconLocation(ExePath, 0);
+                        pf.Save(lnk, true);
+                    }
+                }
+                catch { }
+                finally { if (link != null) Marshal.FinalReleaseComObject(link); }
+            }
+        }
+
+        // Deve coincidere con Program.AppUserModelId in CorbolIp.cs
+        const string AppUserModelId = "AppIP.Widget"; // come prima del cambio di nome: le icone già fissate alla barra restano della stessa app
 
         // Crea il collegamento con l'AppUserModelID: l'icona fissata da qui mostra la Jump List dell'app.
         static void CreateShortcut(string lnkPath, string target, string description)
@@ -275,11 +317,17 @@ namespace AppIP.Setup
             string vi = installed != null ? Installer.V(installed) : null, vc = Installer.V(cur);
             string infoText, action;
             bool warn = false;
-            if (installed == null)
+            if (installed != null && !File.Exists(Installer.ExePath))
+            {
+                action = L.T("Aggiorna", "Update");
+                infoText = L.F("{0} {1} diventa CorbolIp {2}: cambia solo il nome, le impostazioni vengono mantenute.",
+                               "{0} {1} becomes CorbolIp {2}: only the name changes, your settings are kept.", OldApp.Name, vi, vc);
+            }
+            else if (installed == null)
             {
                 action = L.T("Installa", "Install");
-                infoText = L.T("AppIP verrà installata solo per il tuo utente, senza permessi di amministratore, nella cartella:",
-                               "AppIP will be installed for your user only, without administrator rights, in the folder:");
+                infoText = L.T("CorbolIp verrà installata solo per il tuo utente, senza permessi di amministratore, nella cartella:",
+                               "CorbolIp will be installed for your user only, without administrator rights, in the folder:");
             }
             else if (installed < cur)
             {
@@ -301,7 +349,7 @@ namespace AppIP.Setup
                            "Warning: a newer version ({0}) is installed. This installer contains the older {1}. Continuing will replace it.", vi, vc);
             }
 
-            Text = action + " AppIP";
+            Text = action + " CorbolIp";
             FormBorderStyle = FormBorderStyle.FixedDialog;
             MaximizeBox = MinimizeBox = false;
             StartPosition = FormStartPosition.CenterScreen;
@@ -317,7 +365,7 @@ namespace AppIP.Setup
             try { using (var ic = new Icon(Icon, 64, 64)) pic.Image = ic.ToBitmap(); } catch { }
             var title = new Label
             {
-                Text = "AppIP " + AppVersion.Text, ForeColor = Color.White, AutoSize = true,
+                Text = "CorbolIp " + AppVersion.Text, ForeColor = Color.White, AutoSize = true,
                 Font = new Font("Segoe UI Semibold", 15f), Location = new Point(88, 16), BackColor = Color.Transparent
             };
             var sub = new Label
@@ -338,9 +386,9 @@ namespace AppIP.Setup
                 Text = Installer.InstallDir, AutoEllipsis = true
             };
 
-            cbStartup = new CheckBox { Text = L.T("Avvia AppIP all'accensione del PC", "Start AppIP when Windows starts"), Location = new Point(22, 164), AutoSize = true, Checked = Installer.StartupEnabled() };
-            cbDesktop = new CheckBox { Text = L.T("Crea un collegamento sul desktop", "Create a desktop shortcut"), Location = new Point(22, 188), AutoSize = true };
-            cbLaunch = new CheckBox { Text = L.T("Avvia AppIP al termine", "Launch AppIP when finished"), Location = new Point(22, 212), AutoSize = true, Checked = true };
+            cbStartup = new CheckBox { Text = L.T("Avvia CorbolIp all'accensione del PC", "Start CorbolIp when Windows starts"), Location = new Point(22, 164), AutoSize = true, Checked = Installer.StartupEnabled() };
+            cbDesktop = new CheckBox { Text = L.T("Crea un collegamento sul desktop", "Create a desktop shortcut"), Location = new Point(22, 188), AutoSize = true, Checked = Installer.DesktopShortcutExists() };
+            cbLaunch = new CheckBox { Text = L.T("Avvia CorbolIp al termine", "Launch CorbolIp when finished"), Location = new Point(22, 212), AutoSize = true, Checked = true };
 
             lblStatus = new Label { Location = new Point(20, 262), Size = new Size(240, 20), ForeColor = Color.DimGray };
             btnInstall = new Button { Text = action, Location = new Point(240, 256), MinimumSize = new Size(120, 30), AutoSize = true };
@@ -408,15 +456,15 @@ namespace AppIP.Setup
                 Installer.Install(cbStartup.Checked, cbDesktop.Checked, cbLaunch.Checked);
                 Cursor = Cursors.Default;
                 MessageBox.Show(this,
-                    L.T("AppIP è stata installata.\n\n" +
+                    L.T("CorbolIp è stata installata.\n\n" +
                         "La trovi nel menu Start. Per fissarla alla barra delle applicazioni: " +
-                        "Start → tasto destro su AppIP → Aggiungi alla barra delle applicazioni.\n\n" +
-                        "Per disinstallarla: Impostazioni → App → App installate → AppIP.",
-                        "AppIP has been installed.\n\n" +
+                        "Start → tasto destro su CorbolIp → Aggiungi alla barra delle applicazioni.\n\n" +
+                        "Per disinstallarla: Impostazioni → App → App installate → CorbolIp.",
+                        "CorbolIp has been installed.\n\n" +
                         "You can find it in the Start menu. To pin it to the taskbar: " +
-                        "Start → right-click AppIP → Pin to taskbar.\n\n" +
-                        "To uninstall it: Settings → Apps → Installed apps → AppIP."),
-                    "AppIP", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                        "Start → right-click CorbolIp → Pin to taskbar.\n\n" +
+                        "To uninstall it: Settings → Apps → Installed apps → CorbolIp."),
+                    "CorbolIp", MessageBoxButtons.OK, MessageBoxIcon.Information);
                 Close();
             }
             catch (Exception ex)
@@ -424,7 +472,7 @@ namespace AppIP.Setup
                 Cursor = Cursors.Default;
                 lblStatus.Text = "";
                 btnInstall.Enabled = btnCancel.Enabled = true;
-                MessageBox.Show(this, L.T("Installazione non riuscita:", "Installation failed:") + "\n" + ex.Message, "AppIP", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                MessageBox.Show(this, L.T("Installazione non riuscita:", "Installation failed:") + "\n" + ex.Message, "CorbolIp", MessageBoxButtons.OK, MessageBoxIcon.Error);
             }
         }
     }
