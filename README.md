@@ -1,11 +1,13 @@
 # Statistiche AppIP
 
-Aggiornato il 2026-11-11 (UTC) dalla GitHub Action *Statistiche download*.
+Aggiornato il 2026-11-12 (UTC) dalla GitHub Action *Statistiche download*.
 
 ## Download totali per file
 
 | Versione | File | Download |
 |---|---|---:|
+| v1.7.2 | AppIP-Setup-1.7.2.exe | 3 |
+| v1.7.1 | AppIP-Setup-1.7.1.exe | 2 |
 | v1.7.0 | AppIP-Setup-1.7.0.exe | 2 |
 | v1.6.0 | AppIP-Setup-1.6.0.exe | 2 |
 | v1.5.0 | AppIP-Setup-1.5.0.exe | 2 |
@@ -17,12 +19,13 @@ Aggiornato il 2026-11-11 (UTC) dalla GitHub Action *Statistiche download*.
 | v1.1.1 | AppIP-Setup-1.1.1.exe | 2 |
 | v1.1.0 | AppIP-Setup-1.1.0.exe | 2 |
 | v1.0.1 | AppIP-Setup-1.0.1.exe | 1 |
-| | **Totale** | **23** |
+| | **Totale** | **28** |
 
 ## Nuovi download per giorno (ultimi 30 giorni)
 
 | Giorno | Nuovi | Totale |
 |---|---:|---:|
+| 2026-11-12 | 5 | 28 |
 | 2026-11-11 | 8 | 23 |
 | 2026-11-10 | 0 | 15 |
 | 2026-11-09 | 0 | 15 |
@@ -36,6 +39,7 @@ Aggiornato il 2026-11-11 (UTC) dalla GitHub Action *Statistiche download*.
 
 | Giorno | Visite | Visitatori unici | Clone | Clone unici |
 |---|---:|---:|---:|---:|
+| 2026-11-11 | 1 | 1 | 17 | 8 |
 | 2026-11-10 | 2 | 1 | 7 | 5 |
 | 2026-11-09 | 0 | 0 | 1 | 1 |
 | 2026-11-08 | 3 | 1 | 14 | 8 |
