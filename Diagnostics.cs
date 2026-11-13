@@ -722,8 +722,18 @@ namespace CorbolIp
         void ShowAi(string text, bool hint = false)
         {
             if (txtAi == null) return;
-            txtAi.ForeColor = hint ? Color.DimGray : SystemColors.WindowText;
-            txtAi.Text = Crlf(text);
+            var color = hint ? Color.DimGray : SystemColors.WindowText;
+            bool sameColor = txtAi.ForeColor == color;
+            if (!sameColor) txtAi.ForeColor = color;
+            string s = Crlf(text), cur = txtAi.Text;
+            if (s == cur) return;
+            // durante lo streaming il testo cresce: si aggiunge solo la parte nuova, senza ridisegnare tutto (niente sfarfallio)
+            if (sameColor && cur.Length > 0 && s.Length > cur.Length && s.StartsWith(cur, StringComparison.Ordinal))
+            {
+                txtAi.AppendText(s.Substring(cur.Length));
+                return;
+            }
+            txtAi.Text = s;
             txtAi.SelectionStart = txtAi.TextLength;
             txtAi.ScrollToCaret();
         }
@@ -888,12 +898,18 @@ namespace CorbolIp
             var acc = new StringBuilder();
             var checksDone = new List<string>();
             var sentLog = new StringBuilder();
+            int pending = 0;   // al massimo un aggiornamento in coda: i pezzi arrivati nel frattempo si mostrano insieme
             Action refresh = delegate
             {
-                string shown;
-                lock (acc) shown = acc.ToString();
-                if (anon != null) shown = anon.Restore(shown);
-                Ui(delegate { if (aiCts == cts) ShowAi(shown); });
+                if (Interlocked.Exchange(ref pending, 1) == 1) return;
+                Ui(delegate
+                {
+                    Interlocked.Exchange(ref pending, 0);
+                    string shown;
+                    lock (acc) shown = acc.ToString();
+                    if (anon != null) shown = anon.Restore(shown);
+                    if (aiCts == cts) ShowAi(shown);
+                });
             };
             int calls = 0;
             var req = AiRequest.Simple(sys, user);
