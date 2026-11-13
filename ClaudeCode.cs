@@ -78,7 +78,10 @@ namespace CorbolIp
             {
                 Directory.CreateDirectory(dir);
                 File.WriteAllText(sysFile, r.System ?? "", new UTF8Encoding(false));
-                string user = string.Join("\n\n", r.Messages.Select(m => m.Text));
+                // una sola richiesta: claude -p non ha la conversazione, i turni precedenti vanno scritti con chi parla
+                string user = r.Messages.Count == 1 ? r.Messages[0].Text
+                    : string.Join("\n\n", r.Messages.Select((m, i) =>
+                        (m.Role == "assistant" ? "[Your previous reply]" : i == r.Messages.Count - 1 ? "[User - answer this message]" : "[User]") + "\n" + m.Text));
 
                 string args = "-p --output-format stream-json --verbose --include-partial-messages --tools \"\" --no-session-persistence"
                             + " --strict-mcp-config --system-prompt-file \"" + sysFile + "\""
