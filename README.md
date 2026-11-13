@@ -1,30 +1,34 @@
-# Statistiche AppIP
+# Statistiche CorbolIp
 
-Aggiornato il 2026-11-12 (UTC) dalla GitHub Action *Statistiche download*.
+Aggiornato il 2026-11-13 (UTC) dalla GitHub Action *Statistiche download*.
 
 ## Download totali per file
 
 | Versione | File | Download |
 |---|---|---:|
-| v1.7.2 | AppIP-Setup-1.7.2.exe | 3 |
-| v1.7.1 | AppIP-Setup-1.7.1.exe | 2 |
-| v1.7.0 | AppIP-Setup-1.7.0.exe | 2 |
-| v1.6.0 | AppIP-Setup-1.6.0.exe | 2 |
-| v1.5.0 | AppIP-Setup-1.5.0.exe | 2 |
-| v1.4.0 | AppIP-Setup-1.4.0.exe | 2 |
-| v1.3.1 | AppIP-Setup-1.3.1.exe | 4 |
-| v1.3.0 | AppIP-Setup-1.3.0.exe | 2 |
-| v1.2.1 | AppIP-Setup-1.2.1.exe | 2 |
-| v1.2.0 | AppIP-Setup-1.2.0.exe | 2 |
-| v1.1.1 | AppIP-Setup-1.1.1.exe | 2 |
-| v1.1.0 | AppIP-Setup-1.1.0.exe | 2 |
-| v1.0.1 | AppIP-Setup-1.0.1.exe | 1 |
-| | **Totale** | **28** |
+| v1.8.2 | CorbolIp-Setup-1.8.2.exe | 1 |
+| v1.8.1 | CorbolIp-Setup-1.8.1.exe | 3 |
+| v1.8.0 | CorbolIp-Setup-1.8.0.exe | 3 |
+| v1.7.2 | AppIP-Setup-1.7.2.exe | 4 |
+| v1.7.1 | AppIP-Setup-1.7.1.exe | 3 |
+| v1.7.0 | AppIP-Setup-1.7.0.exe | 3 |
+| v1.6.0 | AppIP-Setup-1.6.0.exe | 3 |
+| v1.5.0 | AppIP-Setup-1.5.0.exe | 3 |
+| v1.4.0 | AppIP-Setup-1.4.0.exe | 3 |
+| v1.3.1 | AppIP-Setup-1.3.1.exe | 5 |
+| v1.3.0 | AppIP-Setup-1.3.0.exe | 3 |
+| v1.2.1 | AppIP-Setup-1.2.1.exe | 3 |
+| v1.2.0 | AppIP-Setup-1.2.0.exe | 3 |
+| v1.1.1 | AppIP-Setup-1.1.1.exe | 3 |
+| v1.1.0 | AppIP-Setup-1.1.0.exe | 3 |
+| v1.0.1 | AppIP-Setup-1.0.1.exe | 2 |
+| | **Totale** | **48** |
 
 ## Nuovi download per giorno (ultimi 30 giorni)
 
 | Giorno | Nuovi | Totale |
 |---|---:|---:|
+| 2026-11-13 | 20 | 48 |
 | 2026-11-12 | 5 | 28 |
 | 2026-11-11 | 8 | 23 |
 | 2026-11-10 | 0 | 15 |
@@ -39,6 +43,7 @@ Aggiornato il 2026-11-12 (UTC) dalla GitHub Action *Statistiche download*.
 
 | Giorno | Visite | Visitatori unici | Clone | Clone unici |
 |---|---:|---:|---:|---:|
+| 2026-11-12 | 4 | 1 | 43 | 23 |
 | 2026-11-11 | 1 | 1 | 17 | 8 |
 | 2026-11-10 | 2 | 1 | 7 | 5 |
 | 2026-11-09 | 0 | 0 | 1 | 1 |
