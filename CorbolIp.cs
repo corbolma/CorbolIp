@@ -421,7 +421,7 @@ namespace CorbolIp
         string updVersion, updUrl, updSha; // ultima release più recente di questa (null = nessuna)
         int checkingUpd;
         DateTime lastUpdCheck = DateTime.MinValue;
-        bool balloonIsUpdate;
+        bool balloonIsUpdate, balloonIsHistory;
         WinTimer updTimer;
         TaskbarButton taskbarBtn;   // accende l'icona fissata sulla barra delle applicazioni mentre l'app è aperta
 
@@ -500,6 +500,7 @@ namespace CorbolIp
             menu.Items.Add(miShow);
             menu.Items.Add(Mi("Aggiorna", "Refresh", delegate { lastPublicFetch = DateTime.MinValue; RefreshInfo(); }));
             menu.Items.Add(Mi("Copia tutto", "Copy all", delegate { CopyAll(); }));
+            menu.Items.Add(new ToolStripSeparator());
             menu.Items.Add(Mi("Test velocità...", "Speed test...", delegate
             {
                 SpeedTestForm.ShowOnce(tray.Icon,
@@ -510,6 +511,7 @@ namespace CorbolIp
             {
                 DiagnosticsForm.ShowOnce(tray.Icon, DiagSnapshotNow, demo);
             }));
+            menu.Items.Add(Mi("Storico rete...", "Network history...", delegate { ShowHistory(); }));
             menu.Items.Add(Mi("Assistente AI...", "AI assistant...", delegate { AiSettingsForm.ShowOnce(tray.Icon, null); }));
             var miEvents = Mi("Registro eventi", "Event log", null);
             Toggle(miEvents, "Registra gli eventi di rete", "Record network events", () => NetEvents.Enabled, v =>
@@ -518,6 +520,8 @@ namespace CorbolIp
                 NetEvents.Enabled = v;
                 if (v) { evInit = false; RefreshInfo(); }
             });
+            Toggle(miEvents, "Impara la qualità normale delle reti", "Learn the usual quality of networks", () => NetStats.Enabled, v => NetStats.Enabled = v);
+            Toggle(miEvents, "Avvisa se la rete è peggio del solito", "Notify when the network is worse than usual", () => NetStats.Alerts, v => NetStats.Alerts = v);
             miEvents.DropDownItems.Add(Mi("Apri il registro", "Open the log", delegate
             {
                 try
@@ -638,8 +642,12 @@ namespace CorbolIp
             tray.Visible = true;
             tray.MouseClick += (s, e) => { if (e.Button == MouseButtons.Left) ShowBalloon(); };
             tray.DoubleClick += delegate { ToggleWidget(); };
-            tray.BalloonTipClicked += delegate { if (balloonIsUpdate) { balloonIsUpdate = false; OfferUpdate(); } };
-            tray.BalloonTipClosed += delegate { balloonIsUpdate = false; };
+            tray.BalloonTipClicked += delegate
+            {
+                if (balloonIsUpdate) { balloonIsUpdate = false; OfferUpdate(); }
+                else if (balloonIsHistory) { balloonIsHistory = false; ShowHistory(); }
+            };
+            tray.BalloonTipClosed += delegate { balloonIsUpdate = balloonIsHistory = false; };
 
             // ----- mouse: trascina per spostare, clic su un valore per copiarlo -----
             MouseDown += (s, e) => { if (e.Button == MouseButtons.Left) { pressing = true; downPt = e.Location; } };
@@ -684,13 +692,14 @@ namespace CorbolIp
                 ApplyLook();
                 pingInterval = 5; gwMs = 2; netMs = 14;
                 NetEvents.Enabled = false;
+                NetStats.Enabled = false;
                 ResizeToContent();
                 return;
             }
 
             LoadSettings();
             Settings.SaveHandler = SaveSettings; // l'assistente AI salva le sue impostazioni nello stesso file
-            ThreadPool.QueueUserWorkItem(delegate { NetEvents.Prune(); });
+            ThreadPool.QueueUserWorkItem(delegate { NetEvents.Prune(); NetStats.Prune(); });
             SystemEvents.PowerModeChanged += OnPowerModeChanged;
             ApplyLook();
             SetPingInterval(pingInterval);
@@ -1040,6 +1049,7 @@ namespace CorbolIp
             allLines = result.OrderBy(l => l.HasGateway && !l.IsVpn ? 0 : l.IsVpn ? 1 : 2).ToList();
             ApplyFilter();
             TrackEvents();
+            TrackQuality();
 
             if (DateTime.Now - lastPublicFetch > TimeSpan.FromMinutes(5))
                 FetchPublicIp();
@@ -1072,7 +1082,7 @@ namespace CorbolIp
             {
                 if (id != evNetId)
                 {
-                    if (p == null) NetEvents.Add("NET", L.F("Rete scollegata (era {0})", "Network disconnected (was {0})", evName));
+                    if (p == null) NetEvents.Add("NETDOWN", L.F("Rete scollegata (era {0})", "Network disconnected (was {0})", evName));
                     else if (evNetId == null) NetEvents.Add("NET", L.F("Rete collegata: {0}, IP {1}", "Network connected: {0}, IP {1}", name, ip));
                     else NetEvents.Add("NET", L.F("Rete cambiata: {0} → {1}, IP {2}", "Network changed: {0} → {1}, IP {2}", evName, name, ip));
                 }
@@ -1104,10 +1114,29 @@ namespace CorbolIp
         void TrackPing(int g, int n)
         {
             if (demo || !NetEvents.Enabled) return;
-            if (g == -1) { if (++evGwFail == 2) { evGwDownAt = DateTime.Now; NetEvents.Add("PING", L.T("Il router non risponde al ping", "The router does not answer ping")); } }
+            if (g == -1) { if (++evGwFail == 2) { evGwDownAt = DateTime.Now; NetEvents.Add("GWDOWN", L.T("Il router non risponde al ping", "The router does not answer ping")); } }
             else if (g >= 0) { if (evGwFail >= 2) NetEvents.Add("PING", L.F("Il router risponde di nuovo (dopo {0})", "The router answers again (after {0})", Duration(DateTime.Now - evGwDownAt))); evGwFail = 0; }
-            if (n < 0 && g != -3) { if (++evNetFail == 2) { evNetDownAt = DateTime.Now; NetEvents.Add("PING", L.T("Internet non risponde al ping", "The Internet does not answer ping")); } }
+            if (n < 0 && g != -3) { if (++evNetFail == 2) { evNetDownAt = DateTime.Now; NetEvents.Add("INETDOWN", L.T("Internet non risponde al ping", "The Internet does not answer ping")); } }
             else if (n >= 0) { if (evNetFail >= 2) NetEvents.Add("PING", L.F("Internet risponde di nuovo (dopo {0})", "The Internet answers again (after {0})", Duration(DateTime.Now - evNetDownAt))); evNetFail = 0; }
+        }
+
+        // Qualità della rete in uso (NetStats): segnale Wi-Fi ogni 10 s, ogni 5 minuti il confronto con il solito
+        void TrackQuality()
+        {
+            if (demo || !NetStats.Enabled) return;
+            var p = allLines.FirstOrDefault(l => l.HasGateway && !l.IsVpn && !l.IsVirtual) ?? allLines.FirstOrDefault(l => l.HasGateway && !l.IsVpn);
+            if (p != null && p.IsWifi) NetStats.AddWifi(p.WifiSignal, p.Wi != null ? p.Wi.Rssi : 0, p.Wi != null ? p.Wi.RxMbps : -1);
+            var alert = NetStats.Tick(NetStats.KeyFor(p), NetStats.LabelFor(p));
+            if (alert == null || !NetStats.Alerts) return;
+            balloonIsUpdate = false;
+            tray.ShowBalloonTip(10000, L.F("{0}: rete peggio del solito", "{0}: network worse than usual", alert.Label),
+                                alert.Text + "\n" + L.T("Clicca per vedere lo storico.", "Click to see the history."), ToolTipIcon.Warning);
+            balloonIsHistory = true;
+        }
+
+        void ShowHistory()
+        {
+            HistoryForm.ShowOnce(tray.Icon, DiagSnapshotNow, () => pingInterval);
         }
 
         static string Duration(TimeSpan t)
@@ -1246,6 +1275,7 @@ namespace CorbolIp
                         rxRate = Math.Max(0, (rx - lastRx) / sec);
                         txRate = Math.Max(0, (tx - lastTx) / sec);
                         rxHist.Add(rxRate); txHist.Add(txRate);
+                        if (!demo) NetStats.AddRate(rxRate, txRate);
                         if (rxHist.Count > HistLen) { rxHist.RemoveAt(0); txHist.RemoveAt(0); }
                     }
                 }
@@ -1284,7 +1314,7 @@ namespace CorbolIp
                     int g = gw == null ? -3 : DoPing(p, gw);
                     int n = DoPing(p, "1.1.1.1");
                     if (n < 0) n = DoPing(p, "8.8.8.8");
-                    if (pingInterval == iv) { gwMs = g; netMs = n; TrackPing(g, n); }
+                    if (pingInterval == iv) { gwMs = g; netMs = n; TrackPing(g, n); if (!demo) NetStats.AddPing(g, n); }
                     pingWake.WaitOne(iv * 1000);
                 }
             }
@@ -1446,7 +1476,7 @@ namespace CorbolIp
 
         void DownloadUpdate(string url, string sha, string ver, string page)
         {
-            balloonIsUpdate = false;
+            balloonIsUpdate = balloonIsHistory = false;
             tray.ShowBalloonTip(3000, "CorbolIp", L.F("Download di CorbolIp {0} in corso...", "Downloading CorbolIp {0}...", ver), ToolTipIcon.Info);
             ThreadPool.QueueUserWorkItem(delegate
             {
@@ -1522,7 +1552,7 @@ namespace CorbolIp
         void ShowBalloon()
         {
             var sb = new StringBuilder();
-            balloonIsUpdate = false;
+            balloonIsUpdate = balloonIsHistory = false;
             sb.AppendLine(L.T("IP pubblico", "Public IP") + ": " + publicIp);
             if (vpn != null) sb.AppendLine("VPN: " + vpn.Name + " (" + vpn.IPv4Plain + ")");
             foreach (var l in lines.Take(2))
@@ -1584,7 +1614,7 @@ namespace CorbolIp
             try
             {
                 Clipboard.SetText(BuildText());
-                balloonIsUpdate = false;
+                balloonIsUpdate = balloonIsHistory = false;
                 tray.ShowBalloonTip(1500, "CorbolIp", L.T("Informazioni copiate negli appunti", "Information copied to clipboard"), ToolTipIcon.Info);
             }
             catch { }
@@ -2020,6 +2050,8 @@ namespace CorbolIp
                     if (d.TryGetValue("wifiinfo", out v)) showWifiInfo = v != "0";
                     if (d.TryGetValue("updates", out v)) autoUpdate = v == "1";
                     if (d.TryGetValue("events", out v)) NetEvents.Enabled = v != "0";
+                    if (d.TryGetValue("quality", out v)) NetStats.Enabled = v != "0";
+                    if (d.TryGetValue("qualityalert", out v)) NetStats.Alerts = v != "0";
                     if (d.TryGetValue("speedtest", out v)) speedServer = v;
                     if (d.TryGetValue("theme", out v) && (v == "auto" || v == "dark" || v == "light")) theme = v;
                     int op;
@@ -2067,6 +2099,8 @@ namespace CorbolIp
                 sb.Append("wifiinfo=").Append(showWifiInfo ? "1" : "0").Append('\n');
                 sb.Append("updates=").Append(autoUpdate ? "1" : "0").Append('\n');
                 sb.Append("events=").Append(NetEvents.Enabled ? "1" : "0").Append('\n');
+                sb.Append("quality=").Append(NetStats.Enabled ? "1" : "0").Append('\n');
+                sb.Append("qualityalert=").Append(NetStats.Alerts ? "1" : "0").Append('\n');
                 sb.Append("speedtest=").Append(speedServer).Append('\n');
                 foreach (var kv in Settings.Values.OrderBy(k => k.Key)) sb.Append(kv.Key).Append('=').Append(kv.Value).Append('\n');
                 File.WriteAllText(settingsPath, sb.ToString());

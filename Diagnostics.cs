@@ -43,7 +43,7 @@ namespace CorbolIp
         public int Ms = -1;       // tempo medio misurato (ping, DNS)
     }
 
-    class DiagnosticsForm : Form
+    class DiagnosticsForm : AiChatForm
     {
         const string NcsiUrl = "http://www.msftconnecttest.com/connecttest.txt"; // lo stesso controllo di Windows
         const string NcsiText = "Microsoft Connect Test";
@@ -79,20 +79,6 @@ namespace CorbolIp
         DiagState conclState = DiagState.Wait;
         string conclTitle = "", conclText = "";
         string pubIp; // IP pubblico visto dal controllo HTTPS (per l'anonimizzazione)
-
-        // assistente AI
-        readonly bool ai;
-        enum AiKind { Explain, Ticket, Question }
-        readonly Button btnExplain, btnTicket, btnNew, btnAsk;
-        readonly TextBox txtAi, txtQuestion;
-        CancellationTokenSource aiCts;
-        string lastSent;                                            // ultimo testo inviato
-        // conversazione con l'assistente: si azzera con Nuova conversazione o con una nuova diagnosi
-        readonly List<AiMessage> convo = new List<AiMessage>();     // messaggi inviati (anonimizzati se richiesto)
-        readonly StringBuilder transcript = new StringBuilder();    // testo del riquadro (in chiaro)
-        readonly StringBuilder chatLog = new StringBuilder();       // spiegazioni e risposte per Copia report
-        string ticketText;                                          // ultima segnalazione: Copia report la mette in cima
-        Anonymizer anon;
 
         DiagnosticsForm(Icon icon, Func<DiagSnapshot> snapshot, bool demo)
         {
@@ -144,31 +130,10 @@ namespace CorbolIp
 
             ai = AiSettings.Enabled;
             int by = 366; // riga dei pulsanti in basso
-            var aiCtl = new List<Control>();
             if (ai)
             {
-                btnExplain = new Button { Text = L.T("Spiega", "Explain"), Size = new Size(100, 30), Location = new Point(16, 362), Enabled = false };
-                btnTicket = new Button { Text = L.T("Prepara segnalazione", "Write support request"), Size = new Size(170, 30), Location = new Point(124, 362), Enabled = false };
-                btnNew = new Button { Text = L.T("Nuova conversazione", "New conversation"), Size = new Size(160, 30), Location = new Point(302, 362) };
-                txtAi = new TextBox
-                {
-                    Multiline = true, ReadOnly = true, ScrollBars = ScrollBars.Vertical, BackColor = Color.White,
-                    Location = new Point(16, 400), Size = new Size(508, 160), ForeColor = Color.DimGray
-                };
-                txtQuestion = new TextBox { Multiline = true, ScrollBars = ScrollBars.Vertical, Location = new Point(16, 568), Size = new Size(412, 52) };
-                btnAsk = new Button { Text = L.T("Chiedi", "Ask"), Size = new Size(90, 52), Location = new Point(434, 568), Enabled = false };
-                by = 632;
-                var lnkSent = new LinkLabel { Text = L.T("Cosa viene inviato", "What is sent"), AutoSize = false, Size = new Size(170, 24), Location = new Point(256, by + 5), LinkBehavior = LinkBehavior.AlwaysUnderline };
-                btnExplain.Click += delegate { RunAi(AiKind.Explain, null, btnExplain); };
-                btnTicket.Click += delegate { RunAi(AiKind.Ticket, null, btnTicket); };
-                btnAsk.Click += delegate { if (aiCts != null) aiCts.Cancel(); else Ask(); };
-                btnNew.Click += delegate { if (aiCts == null && worker == null) ResetConversation(true); };
-                txtQuestion.KeyDown += (o, e) =>
-                {
-                    if (e.KeyCode == Keys.Enter && !e.Shift) { e.SuppressKeyPress = true; Ask(); }   // Maiusc+Invio va a capo
-                };
-                lnkSent.LinkClicked += delegate { ShowSent(); };
-                aiCtl.AddRange(new Control[] { btnExplain, btnTicket, btnNew, txtAi, txtQuestion, btnAsk, lnkSent });
+                by = AddAiControls(362, 508, L.T("Spiega", "Explain"), 100);
+                lnkSent.Location = new Point(256, by + 5);
             }
 
             btnStart = new Button { Text = L.T("Ripeti", "Run again"), Size = new Size(100, 30), Location = new Point(16, by) };
@@ -184,15 +149,9 @@ namespace CorbolIp
             CancelButton = btnClose;
 
             Controls.AddRange(new Control[] { list, lblTitle, lblText, btnStart, btnCopy, btnClose });
-            Controls.AddRange(aiCtl.ToArray());
             ClientSize = new Size(540, by + 44);
             Scale(new SizeF(s, s)); // coordinate pensate per 9 pt
             Shown += delegate { FitColumns(); Start(); };
-        }
-
-        static float ScreenDpi()
-        {
-            try { using (var g = Graphics.FromHwnd(IntPtr.Zero)) return g.DpiX; } catch { return 96f; }
         }
 
         // Le colonne non seguono il ridimensionamento automatico per DPI: si adattano alla lista.
@@ -239,7 +198,6 @@ namespace CorbolIp
         protected override void OnFormClosing(FormClosingEventArgs e)
         {
             Stop();
-            if (aiCts != null) aiCts.Cancel();
             base.OnFormClosing(e);
         }
 
@@ -255,7 +213,7 @@ namespace CorbolIp
             pubIp = null;
             if (ai)
             {
-                btnExplain.Enabled = btnTicket.Enabled = btnAsk.Enabled = false;
+                SetAiButtons(false);
                 ResetConversation(false);   // i risultati cambiano: la conversazione riparte
                 ShowAi(L.T("Al termine dei controlli, Spiega chiede all'assistente cosa significano i risultati e cosa fare; Prepara segnalazione scrive il testo per l'assistenza. " +
                            "Puoi anche fare una domanda qui sotto, per esempio \"perché Teams si blocca?\" o \"il problema è il Wi-Fi o il provider?\".",
@@ -296,12 +254,7 @@ namespace CorbolIp
                 : conclState == DiagState.Error ? Color.FromArgb(190, 40, 40) : Color.FromArgb(190, 110, 0);
             lblText.Text = conclText;
             btnCopy.Enabled = true;
-            if (ai) btnExplain.Enabled = btnTicket.Enabled = btnAsk.Enabled = true;
-        }
-
-        void Ui(Action a)
-        {
-            try { if (!IsDisposed) BeginInvoke(a); } catch { }
+            SetAiButtons(true);
         }
 
         void ShowCheck(DiagCheck c)
@@ -717,6 +670,12 @@ namespace CorbolIp
                 sb.AppendLine(L.T("Eventi di rete delle ultime 24 ore:", "Network events in the last 24 hours:"));
                 sb.Append(ev);
             }
+            string hist = HistoryText(false);
+            if (hist.Length > 0)
+            {
+                sb.AppendLine();
+                sb.Append(hist);
+            }
             return sb.ToString();
         }
 
@@ -730,68 +689,60 @@ namespace CorbolIp
             return sb.ToString();
         }
 
-        static string Crlf(string s)
+        // ---------- storico della rete ----------
+        // Valori normali della rete in uso e ultimi 7 giorni giorno per giorno (per il report e per l'assistente)
+        string HistoryText(bool forAi)
         {
-            return Regex.Replace(s ?? "", "\r?\n", "\r\n");
+            if (demo || !NetStats.Enabled) return "";
+            var p = snap != null ? snap.Primary : null;
+            string days = NetStats.DailyText(7, forAi);
+            string usual = NetStats.UsualText(NetStats.KeyFor(p), NetStats.LabelFor(p), forAi);
+            if (days.Length == 0 && usual.Length == 0) return "";
+            var sb = new StringBuilder();
+            sb.AppendLine(forAi ? "Connection quality history of this PC (recorded by CorbolIp every 5 minutes, local time):"
+                                : L.T("Storico della qualità della rete:", "Network quality history:"));
+            if (usual.Length > 0) sb.AppendLine(usual);
+            if (days.Length > 0)
+            {
+                sb.AppendLine(forAi ? "Last 7 days:" : L.T("Ultimi 7 giorni:", "Last 7 days:"));
+                sb.Append(days);
+            }
+            return sb.ToString();
         }
 
         // ---------- assistente AI ----------
-        void ShowAi(string text, bool hint = false)
+        protected override bool HostBusy { get { return worker != null; } }
+        protected override void SetHostEnabled(bool on) { btnStart.Enabled = on; }
+
+        protected override void OnTicketReady()
         {
-            if (txtAi == null) return;
-            var color = hint ? Color.DimGray : SystemColors.WindowText;
-            bool sameColor = txtAi.ForeColor == color;
-            if (!sameColor) txtAi.ForeColor = color;
-            string s = Crlf(text), cur = txtAi.Text;
-            if (s == cur) return;
-            // durante lo streaming il testo cresce: si aggiunge solo la parte nuova, senza ridisegnare tutto (niente sfarfallio)
-            if (sameColor && cur.Length > 0 && s.Length > cur.Length && s.StartsWith(cur, StringComparison.Ordinal))
-            {
-                txtAi.AppendText(s.Substring(cur.Length));
-                return;
-            }
-            txtAi.Text = s;
-            txtAi.SelectionStart = txtAi.TextLength;
-            txtAi.ScrollToCaret();
+            lblTitle.Text = L.T("Segnalazione pronta: Copia report la copia insieme ai dati tecnici.", "Support request ready: Copy report copies it together with the technical details.");
+            lblTitle.ForeColor = Color.DimGray;
         }
 
-        static string LangName()
-        {
-            try { return CultureInfo.GetCultureInfo(L.Code).EnglishName; } catch { return "English"; }
-        }
+        protected override string DataIntro { get { return "Network diagnosis of my PC:"; } }
+        protected override string ExplainHeader { get { return L.T("Spiegazione dei risultati", "Explanation of the results"); } }
+        protected override string ExplainLogTitle { get { return L.T("Spiegazione dell'assistente", "Assistant's explanation"); } }
+        protected override string ReportName { get { return "the full diagnostic report"; } }
 
-        const string Common =
-            "Words in square brackets in the data (for example [WIFI] or [PUBLIC_IP]) replace private data: copy them exactly when you need " +
-            "them and never use one that does not appear in the data. Do not mention the computer, user or network name unless it helps the user. " +
-            "Rely only on the data provided and never invent values; if the data is not " +
-            "enough to be sure, say so and suggest what to check. Write plain text for a small window: no Markdown headings, bold or tables; " +
-            "use short paragraphs and lists with \"- \". Never say that you checked or tested something unless its result is in the data.";
-
-        const string ToolsHelp =
-            "You can run extra network checks with the tools (at most " + "5" + " in total) when they help to find or confirm the cause, " +
-            "for example a ping or traceroute when the router or the Internet does not answer, a DNS lookup or http_check for a site the " +
-            "user mentions, tcp_port for a service, recent_events to see whether the connection dropped earlier. If the user mentions a " +
-            "specific site, service or address, check it with the tools before answering. Otherwise do not run checks when the results " +
-            "are already clear. After the checks, write only the final answer for the user and mention what the extra checks showed.";
-
-        static string SystemPrompt(bool tools)
+        protected override string SystemPrompt(bool tools)
         {
             return "You are the network assistant built into CorbolIp, a small network widget for Windows. The first message contains the " +
                    "results of an automatic network diagnosis run on the user's PC. Help a non-technical office worker understand what the " +
                    "results mean, fix network problems starting from the most likely fix, and answer their questions about the network. " +
+                   "When the data includes the connection quality history, use it to tell whether a problem is new or recurring (since when, " +
+                   "on which network, at what times), but only when it matters. " +
                    "Keep answers short (under about 150 words) unless the user asks for more. " + Common + (tools ? " " + ToolsHelp : "") +
                    " Answer in " + LangName() + ".";
         }
 
-        const string ExplainRequest = "Explain what these results mean for me and what I can do about it, step by step, starting from the most " +
-                                      "likely fix. If everything works, say so briefly. Keep it under about 150 words.";
-
-        static string TicketRequest(string note)
+        protected override string ExplainRequest
         {
-            return "Write a support request that I will send to the IT help desk. Start with a one-line subject, then describe the problem " +
-                   "from my point of view" + (note.Length > 0 ? " (my description: " + note + ")" : "") + ", taking into account what we " +
-                   "discussed, what the checks found and the most likely cause. Keep it under about 150 words and do not list all the " +
-                   "technical details: the full diagnostic report is attached automatically below your text. Write only the request, ready to send.";
+            get
+            {
+                return "Explain what these results mean for me and what I can do about it, step by step, starting from the most " +
+                       "likely fix. If everything works, say so briefly. Keep it under about 150 words.";
+            }
         }
 
         static string StateWord(DiagState s)
@@ -806,7 +757,7 @@ namespace CorbolIp
         }
 
         // Dati della diagnosi per l'assistente (in chiaro: l'anonimizzazione si applica dopo)
-        string AiInput()
+        protected override string AiData()
         {
             var sb = new StringBuilder();
             sb.AppendLine("Automatic network diagnostics on a Windows PC (CorbolIp " + AppVersion.Text + "), " + runTime.ToString("yyyy-MM-dd HH:mm") + ".");
@@ -846,10 +797,12 @@ namespace CorbolIp
             sb.AppendLine();
             if (ev.Length > 0) { sb.AppendLine("Network events recorded on this PC in the last 24 hours (local time):"); sb.Append(ev); }
             else sb.AppendLine(NetEvents.Enabled ? "No network events recorded in the last 24 hours." : "The network event log is turned off.");
+            string hist = HistoryText(true);
+            if (hist.Length > 0) { sb.AppendLine(); sb.Append(hist); }
             return sb.ToString();
         }
 
-        Anonymizer BuildAnon()
+        protected override Anonymizer BuildAnon()
         {
             var a = new Anonymizer();
             if (snap == null) return a;
@@ -862,295 +815,8 @@ namespace CorbolIp
                 if (!string.IsNullOrEmpty(l.WifiSsid)) a.Add(l.WifiSsid, "WIFI");
                 a.Add(l.Mac, "MAC");
             }
-            // gli eventi scrivono i nomi delle reti Wi-Fi tra virgolette
-            foreach (var e in NetEvents.Recent(168))
-                if (e.Kind == "WIFI" || e.Kind == "NET" || e.Kind == "START")
-                    foreach (Match m in Regex.Matches(e.Text, "\"([^\"]+)\""))
-                        a.Add(m.Groups[1].Value, "WIFI");
+            NetStats.AddPrivateNames(a);   // reti Wi-Fi negli eventi e nello storico
             return a;
-        }
-
-        // L'assistente locale (modello piccolo) non usa gli strumenti: nelle prove diceva di aver controllato senza farlo.
-        // I siti citati dall'utente li controlla comunque CorbolIp (vedi RunAi).
-        // Gli strumenti passano solo dalle API (Claude, compatibili OpenAI); Claude Code parte senza strumenti.
-        static bool UsesTools(IAiProvider prov) { return prov is AiHttpProvider; }
-
-        // Primo messaggio della conversazione: i dati della diagnosi e la prima richiesta (in chiaro)
-        string FirstMessage(string request)
-        {
-            return "Network diagnosis of my PC:\n\n" + AiInput() + "\n\n" + request;
-        }
-
-        void ResetConversation(bool showHint)
-        {
-            convo.Clear();
-            transcript.Length = 0;
-            chatLog.Length = 0;
-            ticketText = null;
-            lastSent = null;
-            anon = null;
-            if (showHint && ai)
-                ShowAi(L.T("Nuova conversazione: premi Spiega o scrivi una domanda.", "New conversation: press Explain or type a question."), true);
-        }
-
-        void Ask()
-        {
-            if (aiCts != null || btnAsk == null || !btnAsk.Enabled) return;
-            string q = txtQuestion.Text.Trim();
-            if (q.Length == 0) { txtQuestion.Focus(); return; }
-            txtQuestion.Text = "";
-            RunAi(AiKind.Question, q, btnAsk);
-        }
-
-        // text: la domanda (Chiedi); per la segnalazione la descrizione arriva dalla casella o da AskNote
-        void RunAi(AiKind kind, string text, Button btn)
-        {
-            if (aiCts != null) { aiCts.Cancel(); return; }
-            if (worker != null) return;
-            var prov = AiSettings.CurrentProvider();
-            if (prov == null)
-            {
-                ShowAi(L.T("L'assistente non è configurato: apri Assistente AI... dal menu di CorbolIp.", "The assistant is not set up: open AI assistant... from the CorbolIp menu."));
-                return;
-            }
-            string note = (text ?? "").Trim();   // testo dell'utente: domanda o descrizione del problema
-            if (kind == AiKind.Ticket)
-            {
-                // la descrizione si può scrivere nella casella delle domande; a conversazione vuota, se manca, la si chiede
-                note = txtQuestion.Text.Trim();
-                if (note.Length > 0) txtQuestion.Text = "";
-                else if (convo.Count == 0)
-                {
-                    note = AskNote();
-                    if (note == null) return;
-                    note = note.Trim();
-                }
-            }
-            string request = kind == AiKind.Explain ? ExplainRequest : kind == AiKind.Ticket ? TicketRequest(note) : "My question: " + note;
-            if (convo.Count == 0)
-            {
-                anon = AiSettings.Anonymize ? BuildAnon() : null;
-                request = FirstMessage(request);
-            }
-            var a = anon;
-            if (a != null) request = a.Apply(request);
-            var msg = new AiMessage("user", request);
-            convo.Add(msg);
-
-            bool tools = UsesTools(prov);
-            var req = new AiRequest { System = SystemPrompt(tools) };
-            req.Messages.AddRange(convo);
-            if (tools) req.Tools = DiagTools.Definitions();
-            lastSent = SentText(prov, req, a != null);
-
-            string header = kind == AiKind.Explain ? "» " + L.T("Spiegazione dei risultati", "Explanation of the results")
-                          : kind == AiKind.Ticket ? "» " + L.T("Segnalazione per l'assistenza", "Support request") + (note.Length > 0 ? "\n" + L.T("Tu", "You") + ": " + note : "")
-                          : L.T("Tu", "You") + ": " + note;
-            int answerStart = transcript.Length;   // a risposta finita si legge da qui
-            if (transcript.Length > 0) { transcript.Append("\n\n"); answerStart = transcript.Length; }
-            transcript.Append(header).Append("\n\n");
-            string head = transcript.ToString();
-
-            var cts = aiCts = new CancellationTokenSource();
-            string idle = btn.Text;
-            btn.Text = L.T("Interrompi", "Stop");
-            foreach (var b in new[] { btnExplain, btnTicket, btnAsk }) if (b != btn) b.Enabled = false;
-            btnStart.Enabled = btnNew.Enabled = false;
-            ShowAi(head + (prov == LocalAi.Instance && !LocalAi.Instance.Running
-                ? L.T("Avvio dell'assistente locale: la prima volta può richiedere fino a un minuto...", "Starting the local assistant: the first time it can take up to a minute...")
-                : L.F("{0} sta scrivendo...", "{0} is writing...", prov.Name)));
-
-            // Nel riquadro: il testo dell'assistente e, man mano, i controlli che esegue ("» ping 8.8.8.8 → ...")
-            var acc = new StringBuilder();
-            var checksDone = new List<string>();
-            var sentLog = new StringBuilder();
-            int pending = 0;   // al massimo un aggiornamento in coda: i pezzi arrivati nel frattempo si mostrano insieme
-            Action refresh = delegate
-            {
-                if (Interlocked.Exchange(ref pending, 1) == 1) return;
-                Ui(delegate
-                {
-                    Interlocked.Exchange(ref pending, 0);
-                    string shown;
-                    lock (acc) shown = acc.ToString();
-                    if (a != null) shown = a.Restore(shown);
-                    if (aiCts == cts) ShowAi(head + shown);
-                });
-            };
-            int calls = 0;
-            req.RunTool = delegate (AiToolCall c)
-            {
-                // gli argomenti possono contenere segnaposti ([PC]...): si eseguono con i valori veri
-                if (a != null && c.Args != null)
-                    foreach (var k in c.Args.Keys.ToList())
-                        if (c.Args[k] is string) c.Args[k] = a.Restore((string)c.Args[k]);
-                string label = DiagTools.Describe(c);
-                if (++calls > DiagTools.MaxCalls) return "Error: the limit of " + DiagTools.MaxCalls + " checks is reached. Answer now with what you have.";
-                lock (acc) acc.Append((acc.Length > 0 && acc[acc.Length - 1] != '\n' ? "\n" : "") + "» " + label + " ...\n");
-                refresh();
-                string outp = DiagTools.Execute(c, cts.Token);
-                string first = outp.Split('\n')[0].Trim();
-                lock (acc)
-                {
-                    acc.Length -= 5; // toglie " ...\n"
-                    acc.Append(" → " + (first.Length > 120 ? first.Substring(0, 120) + "…" : first) + "\n\n");
-                }
-                checksDone.Add(label + ": " + first);
-                refresh();
-                string sentOut = a != null ? a.Apply(outp) : outp;
-                lock (sentLog) sentLog.AppendLine().AppendLine("--- " + L.F("Controllo: {0}", "Check: {0}", label) + " ---").Append(sentOut);
-                return sentOut;
-            };
-            var t = new Thread(delegate ()
-            {
-                var targets = DiagTools.TargetsIn(note);
-                if (targets.Count > 0)
-                {
-                    var pre = new StringBuilder();
-                    foreach (var c in targets.SelectMany(DiagTools.ChecksFor))
-                    {
-                        if (cts.IsCancellationRequested) break;
-                        string label = DiagTools.Describe(c);
-                        lock (acc) acc.Append("» " + label + " ...\n");
-                        refresh();
-                        string outp;
-                        try { outp = DiagTools.Execute(c, cts.Token); } catch (Exception ex) { outp = "Error: " + ex.Message; }
-                        string first = outp.Split('\n')[0].Trim();
-                        lock (acc) { acc.Length -= 5; acc.Append(" → " + (first.Length > 120 ? first.Substring(0, 120) + "…" : first) + "\n"); }
-                        refresh();
-                        checksDone.Add(label + ": " + first);
-                        pre.AppendLine("- " + label + ": " + outp.Trim());
-                    }
-                    lock (acc) acc.Append("\n");
-                    string extra = "\n\nChecks that CorbolIp ran on what the user mentioned:\n" + pre;
-                    if (a != null) extra = a.Apply(extra);
-                    msg.Text += extra;   // resta nella conversazione anche per le domande successive
-                    lock (sentLog) sentLog.Append(extra);
-                }
-                int keep;
-                lock (acc) keep = acc.Length; // fin qui: i controlli di CorbolIp, da tenere se l'assistente ricomincia
-                req.OnRestart = delegate
-                {
-                    lock (acc) { acc.Length = keep; acc.Append(L.T("(l'assistente locale si è chiuso: riparte e ricomincia la risposta...)", "(the local assistant closed: restarting the reply...)") + "\n"); }
-                    calls = 0;
-                    refresh();
-                };
-                var res = prov.Run(req, delegate (string chunk)
-                {
-                    lock (acc) acc.Append(chunk);
-                    refresh();
-                }, cts.Token);
-                string raw;
-                lock (acc) raw = acc.ToString();
-                Ui(delegate
-                {
-                    lock (sentLog) if (sentLog.Length > 0) lastSent += "\n" + sentLog;
-                    aiCts = null;
-                    btn.Text = idle;
-                    btnExplain.Enabled = btnTicket.Enabled = btnAsk.Enabled = btnStart.Enabled = btnNew.Enabled = true;
-                    // la risposta (senza le righe dei controlli) entra nella conversazione per le domande successive
-                    string answer = string.Join("\n", raw.Split('\n').Where(l => !l.StartsWith("» "))).Trim();
-                    string final = (a != null ? a.Restore(raw) : raw).Trim();
-                    string shown = final;
-                    if (res.Cancelled) shown += (shown.Length > 0 ? "\n\n" : "") + L.T("(interrotto)", "(stopped)");
-                    else if (!res.Ok) shown = res.Error + (shown.Length > 0 ? "\n\n" + shown : "");
-                    else if (res.Truncated) shown += "\n\n" + L.T("(risposta troncata)", "(reply cut short)");
-                    bool ok = res.Ok && answer.Length > 0;
-                    if (ok) convo.Add(new AiMessage("assistant", answer));
-                    else convo.Remove(msg);   // domanda senza risposta: si può ripetere
-                    if (convo.Count == 0) anon = null;
-                    transcript.Append(shown);
-                    ShowAi(transcript.ToString());
-                    txtAi.SelectionStart = Crlf(transcript.ToString(0, answerStart)).Length; // si legge dall'inizio della risposta
-                    txtAi.ScrollToCaret();
-                    txtQuestion.Focus();
-                    if (!ok) return;
-
-                    // per "Copia report": risposta in chiaro senza le righe dei controlli, che vanno in un elenco a parte
-                    string clean = a != null ? a.Restore(answer) : answer;
-                    if (checksDone.Count > 0)
-                        clean += "\n\n" + L.T("Controlli aggiuntivi dell'assistente:", "Extra checks by the assistant:") + "\n- " + string.Join("\n- ", checksDone);
-                    if (kind == AiKind.Ticket)
-                    {
-                        ticketText = clean;
-                        lblTitle.Text = L.T("Segnalazione pronta: Copia report la copia insieme ai dati tecnici.", "Support request ready: Copy report copies it together with the technical details.");
-                        lblTitle.ForeColor = Color.DimGray;
-                    }
-                    else
-                    {
-                        if (kind == AiKind.Question) chatLog.Append(L.T("Domanda", "Question") + ": " + note + "\n");
-                        chatLog.Append(kind == AiKind.Explain ? L.T("Spiegazione dell'assistente", "Assistant's explanation") : L.T("Risposta dell'assistente", "Assistant's answer"))
-                               .Append(":\n").Append(clean).Append("\n\n");
-                    }
-                });
-            });
-            t.IsBackground = true;
-            t.Start();
-        }
-
-        static string SentText(IAiProvider prov, AiRequest req, bool anon)
-        {
-            var sb = new StringBuilder();
-            sb.AppendLine(L.F("Servizio: {0}", "Service: {0}", prov.Name) + (prov.SendsTextOutside ? "" : " " + L.T("(sul PC, i dati non escono)", "(on this PC, data does not leave it)")));
-            sb.AppendLine(anon ? L.T("Anonimizzazione: attiva", "Anonymization: on") : L.T("Anonimizzazione: spenta", "Anonymization: off"));
-            sb.AppendLine();
-            sb.AppendLine("--- " + L.T("Istruzioni", "Instructions") + " ---");
-            sb.AppendLine(req.System);
-            foreach (var m in req.Messages)
-            {
-                sb.AppendLine();
-                sb.AppendLine("--- " + (m.Role == "user" ? L.T("Messaggio", "Message") : L.T("Risposta precedente", "Previous reply")) + " ---");
-                sb.AppendLine(m.Text);
-            }
-            return sb.ToString();
-        }
-
-        // Mostra il testo esatto inviato (o quello che invierebbe Spiega)
-        void ShowSent()
-        {
-            string text = lastSent;
-            if (text == null)
-            {
-                var prov = AiSettings.CurrentProvider();
-                if (prov == null) { ShowAi(L.T("L'assistente non è configurato: apri Assistente AI... dal menu di CorbolIp.", "The assistant is not set up: open AI assistant... from the CorbolIp menu.")); return; }
-                var a = AiSettings.Anonymize ? BuildAnon() : null;
-                string first = FirstMessage(ExplainRequest);
-                if (a != null) first = a.Apply(first);
-                text = SentText(prov, AiRequest.Simple(SystemPrompt(UsesTools(prov)), first), a != null);
-            }
-            using (var f = new Form
-            {
-                Text = L.T("Cosa viene inviato - CorbolIp", "What is sent - CorbolIp"), StartPosition = FormStartPosition.CenterParent,
-                Font = Font, Size = new Size((int)(760 * UiFont.Scale * ScreenDpi() / 96f), (int)(600 * UiFont.Scale * ScreenDpi() / 96f)), MinimizeBox = false, ShowInTaskbar = false, TopMost = true, Icon = Icon
-            })
-            {
-                var tb = new TextBox { Multiline = true, ReadOnly = true, ScrollBars = ScrollBars.Vertical, WordWrap = true, Dock = DockStyle.Fill, Text = Crlf(text), BackColor = Color.White, Font = new Font("Segoe UI", UiFont.Pt + 1f) };
-                f.Controls.Add(tb);
-                tb.SelectionStart = 0;
-                f.ShowDialog(this);
-            }
-        }
-
-        // Descrizione facoltativa del problema per la segnalazione; null = annullato
-        string AskNote()
-        {
-            using (var f = new Form
-            {
-                Text = L.T("Prepara segnalazione - CorbolIp", "Write support request - CorbolIp"), StartPosition = FormStartPosition.CenterParent,
-                FormBorderStyle = FormBorderStyle.FixedDialog, MaximizeBox = false, MinimizeBox = false, ShowInTaskbar = false, TopMost = true,
-                AutoScaleDimensions = new SizeF(96f, 96f), AutoScaleMode = AutoScaleMode.Dpi, Font = Font, BackColor = Color.White
-            })
-            {
-                var lbl = new Label { Text = L.T("Descrivi il problema con parole tue (facoltativo), ad esempio cosa non funziona e da quando:", "Describe the problem in your own words (optional), for example what does not work and since when:"), AutoSize = false, Location = new Point(16, 12), Size = new Size(440, 40) };
-                var tb = new TextBox { Multiline = true, ScrollBars = ScrollBars.Vertical, Location = new Point(16, 56), Size = new Size(440, 100) };
-                var ok = new Button { Text = L.T("Prepara", "Write"), DialogResult = DialogResult.OK, Location = new Point(260, 168), Size = new Size(96, 30) };
-                var cancel = new Button { Text = L.T("Annulla", "Cancel"), DialogResult = DialogResult.Cancel, Location = new Point(360, 168), Size = new Size(96, 30) };
-                f.Controls.AddRange(new Control[] { lbl, tb, ok, cancel });
-                f.CancelButton = cancel; // Invio nella descrizione va a capo
-                f.ClientSize = new Size(472, 212);
-                f.Scale(new SizeF(UiFont.Scale, UiFont.Scale));
-                return f.ShowDialog(this) == DialogResult.OK ? tb.Text : null;
-            }
         }
 
         // ---------- dati fittizi per gli screenshot (/demo) ----------

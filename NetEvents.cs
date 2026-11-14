@@ -28,7 +28,9 @@ namespace CorbolIp
             get { return Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "CorbolIp", "events.log"); }
         }
 
-        // kind: START, STOP, SLEEP, RESUME, NET, IP, WIFI, GW, VPN, PUBIP, PING
+        // kind: START, STOP, SLEEP, RESUME, NET (rete collegata o cambiata), NETDOWN (scollegata), IP, WIFI, GW, VPN, PUBIP,
+        // GWDOWN / INETDOWN (router o Internet non rispondono al ping), PING (rispondono di nuovo),
+        // QUALITY / QUALITYOK (rete peggio del solito / di nuovo normale, vedi NetStats)
         public static void Add(string kind, string text)
         {
             if (!Enabled) return;
@@ -74,17 +76,22 @@ namespace CorbolIp
         // Eventi delle ultime ore, dal più vecchio
         public static List<Entry> Recent(double hours)
         {
+            return Between(DateTime.Now.AddHours(-hours), DateTime.MaxValue);
+        }
+
+        // Eventi nell'intervallo [from, to), dal più vecchio
+        public static List<Entry> Between(DateTime from, DateTime to)
+        {
             var res = new List<Entry>();
             lock (gate)
             {
                 try
                 {
                     if (!File.Exists(FilePath)) return res;
-                    var limit = DateTime.Now.AddHours(-hours);
                     foreach (var l in File.ReadAllLines(FilePath, Encoding.UTF8))
                     {
                         var e = ParseLine(l);
-                        if (e != null && e.Time >= limit) res.Add(e);
+                        if (e != null && e.Time >= from && e.Time < to) res.Add(e);
                     }
                 }
                 catch { }
@@ -96,7 +103,11 @@ namespace CorbolIp
         // forAi: l'IP pubblico non si riporta (resta solo che è cambiato).
         public static string Text(double hours, int maxLines, bool forAi)
         {
-            var list = Recent(hours);
+            return Text(Recent(hours), maxLines, forAi);
+        }
+
+        public static string Text(List<Entry> list, int maxLines, bool forAi)
+        {
             if (list.Count == 0) return "";
             var sb = new StringBuilder();
             if (list.Count > maxLines)

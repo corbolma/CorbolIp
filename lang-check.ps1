@@ -9,7 +9,7 @@ $langDir = Join-Path $root 'lang'
 
 $lit = '"(?:[^"\\]|\\.)*"'
 $arg = "$lit(?:\s*\+\s*$lit)*"
-$call = [regex]"(?:\bL\.[TF]\(|\bMi\(|\bToggle\(\s*\w+\s*,)\s*$arg\s*,\s*(?<en>$arg)"
+$call = [regex]"(?:\bL\.[TF]\(|\bMi\(|\b(?:Toggle|Tr)\(\s*\w+\s*,)\s*$arg\s*,\s*(?<en>$arg)"
 
 function Join-Literals([string]$s) {
     $parts = [regex]::Matches($s, '"((?:[^"\\]|\\.)*)"') | ForEach-Object { $_.Groups[1].Value }
@@ -18,7 +18,7 @@ function Join-Literals([string]$s) {
 }
 
 $keys = New-Object System.Collections.Generic.List[string]
-foreach ($f in 'CorbolIp.cs', 'SpeedTest.cs', 'Diagnostics.cs', 'DiagTools.cs', 'NetEvents.cs', 'Ai.cs', 'AiLocal.cs', 'ClaudeCode.cs', 'AiSettingsForm.cs', 'Setup.cs') {
+foreach ($f in 'CorbolIp.cs', 'SpeedTest.cs', 'Diagnostics.cs', 'DiagTools.cs', 'NetEvents.cs', 'NetStats.cs', 'AiChat.cs', 'HistoryForm.cs', 'Ai.cs', 'AiLocal.cs', 'ClaudeCode.cs', 'AiSettingsForm.cs', 'Setup.cs') {
     $src = Get-Content -Raw -Encoding UTF8 (Join-Path $root $f)
     foreach ($m in $call.Matches($src)) {
         $k = Join-Literals $m.Groups['en'].Value
