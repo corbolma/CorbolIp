@@ -134,6 +134,7 @@ namespace CorbolIp
             {
                 by = AddAiControls(362, 508, L.T("Spiega", "Explain"), 100);
                 lnkSent.Location = new Point(256, by + 5);
+                lnkSent.Width = 134;   // a destra c'è il "?"
             }
 
             btnStart = new Button { Text = L.T("Ripeti", "Run again"), Size = new Size(100, 30), Location = new Point(16, by) };
@@ -148,7 +149,7 @@ namespace CorbolIp
             btnClose.Click += delegate { Close(); };
             CancelButton = btnClose;
 
-            Controls.AddRange(new Control[] { list, lblTitle, lblText, btnStart, btnCopy, btnClose });
+            Controls.AddRange(new Control[] { list, lblTitle, lblText, btnStart, btnCopy, btnClose, Help.Button(this, Help.Diagnostics, new Point(396, by)) });
             ClientSize = new Size(540, by + 44);
             Scale(new SizeF(s, s)); // coordinate pensate per 9 pt
             Shown += delegate { FitColumns(); Start(); };

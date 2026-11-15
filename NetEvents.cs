@@ -23,9 +23,18 @@ namespace CorbolIp
         public static bool Enabled = true;
         static readonly object gate = new object();
 
+        // Cartella dei dati (events.log, quality.log). Si cambia solo nei programmi di prova, per non toccare i file
+        // dell'app installata che magari è aperta.
+        public static string DataDirOverride = null;
+
+        public static string DataDir
+        {
+            get { return DataDirOverride ?? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "CorbolIp"); }
+        }
+
         public static string FilePath
         {
-            get { return Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "CorbolIp", "events.log"); }
+            get { return Path.Combine(DataDir, "events.log"); }
         }
 
         // kind: START, STOP, SLEEP, RESUME, NET (rete collegata o cambiata), NETDOWN (scollegata), IP, WIFI, GW, VPN, PUBIP,

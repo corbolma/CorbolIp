@@ -55,7 +55,7 @@ namespace CorbolIp
 
         public static string FilePath
         {
-            get { return Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "CorbolIp", "quality.log"); }
+            get { return Path.Combine(NetEvents.DataDir, "quality.log"); }
         }
 
         // Rete riconoscibile nel tempo: il nome per il Wi-Fi, scheda + gateway per il cavo

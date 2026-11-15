@@ -30,7 +30,8 @@ namespace CorbolIp
         readonly Func<DiagSnapshot> getSnapshot;
         readonly Func<int> getPing;
         readonly ComboBox cboPeriod;
-        readonly Label lblSummary, lblStatus;
+        readonly Label lblSummary, lblSummary2, lblStatus;   // riepilogo: una riga per rete (le due più usate)
+        readonly ToolTip tips = new ToolTip();
         readonly QualityChart chart;
         readonly ListView list;
         readonly Button btnCopy;
@@ -74,8 +75,10 @@ namespace CorbolIp
             cboPeriod.SelectedIndex = 0;
             lblStatus = new Label { Text = "", AutoSize = false, AutoEllipsis = true, Location = new Point(276, 18), Size = new Size(W - 260, 22), ForeColor = Color.DimGray,
                                     Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right };
-            lblSummary = new Label { Text = "", AutoSize = false, AutoEllipsis = true, Location = new Point(16, 46), Size = new Size(W, 38),
+            lblSummary = new Label { Text = "", AutoSize = false, AutoEllipsis = true, Location = new Point(16, 46), Size = new Size(W, 19),
                                      Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right };
+            lblSummary2 = new Label { Text = "", AutoSize = false, AutoEllipsis = true, Location = new Point(16, 65), Size = new Size(W, 19),
+                                      Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right };
             chart = new QualityChart { Location = new Point(16, 88), Size = new Size(W, 116), Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right };
             list = new ListView
             {
@@ -89,7 +92,7 @@ namespace CorbolIp
             {
                 chart.Mark = list.SelectedItems.Count > 0 ? (DateTime?)((NetEvents.Entry)list.SelectedItems[0].Tag).Time : null;
             };
-            Controls.AddRange(new Control[] { lblPeriod, cboPeriod, lblStatus, lblSummary, chart, list });
+            Controls.AddRange(new Control[] { lblPeriod, cboPeriod, lblStatus, lblSummary, lblSummary2, chart, list });
 
             ai = AiSettings.Enabled;
             int by = 326;
@@ -119,7 +122,9 @@ namespace CorbolIp
             btnReload.Click += delegate { if (aiCts == null) LoadPeriod(); };
             btnClose.Click += delegate { Close(); };
             CancelButton = btnClose;
-            Controls.AddRange(new Control[] { btnReload, btnCopy, btnClose });
+            var btnHelp = Help.Button(this, Help.History, new Point(16 + W - 128, by));
+            btnHelp.Anchor = AnchorStyles.Bottom | AnchorStyles.Right;
+            Controls.AddRange(new Control[] { btnReload, btnCopy, btnClose, btnHelp });
             cboPeriod.SelectedIndexChanged += delegate { if (aiCts == null) LoadPeriod(); else cboPeriod.SelectedIndex = lastPeriod; };
 
 
@@ -195,11 +200,15 @@ namespace CorbolIp
             if (lines.Count == 0)
                 lines.Add(NetStats.Enabled ? L.T("Nessuna misura in questo periodo (PC spento, in sospensione o CorbolIp chiuso).", "No measurements in this period (PC off, asleep or CorbolIp closed).")
                                            : L.T("La registrazione della qualità è spenta (menu Registro eventi).", "Quality recording is turned off (Event log menu)."));
-            lblSummary.Text = string.Join("\n", lines);
+            lblSummary.Text = lines[0];
+            lblSummary2.Text = lines.Count > 1 ? lines[1] : "";
+            tips.SetToolTip(lblSummary, lblSummary.Text);
+            tips.SetToolTip(lblSummary2, lblSummary2.Text);
             int downs = events.Count(e => e.Kind == "NETDOWN"), pings = events.Count(e => e.Kind == "GWDOWN" || e.Kind == "INETDOWN"), worse = events.Count(e => e.Kind == "QUALITY");
             var st = NetStats.EventCounts(downs, pings, worse, false);
             if (getPing() <= 0) st.Add(L.T("ping spento: la latenza non si misura", "ping off: latency is not measured"));
             lblStatus.Text = string.Join(" · ", st);
+            tips.SetToolTip(lblStatus, lblStatus.Text);
 
             if (ai && idx != lastPeriod)
             {

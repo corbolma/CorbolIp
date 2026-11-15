@@ -121,7 +121,8 @@ namespace CorbolIp
             AcceptButton = btnStart;
             CancelButton = btnClose;
 
-            Controls.AddRange(new Control[] { lblJitter, bar, lblStatus, lblInfo, lblVerdict, lblSrv, txtServer, lnkDefault, btnStart, btnCopy, btnClose });
+            Controls.AddRange(new Control[] { lblJitter, bar, lblStatus, lblInfo, lblVerdict, lblSrv, txtServer, lnkDefault, btnStart, btnCopy, btnClose,
+                                              Help.Button(this, Help.SpeedTest, new Point(292, 272)) });
             ClientSize = new Size(440, 318);
             Scale(new SizeF(UiFont.Scale, UiFont.Scale)); // coordinate pensate per 9 pt
         }

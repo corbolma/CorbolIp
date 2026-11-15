@@ -18,7 +18,7 @@ function Join-Literals([string]$s) {
 }
 
 $keys = New-Object System.Collections.Generic.List[string]
-foreach ($f in 'CorbolIp.cs', 'SpeedTest.cs', 'Diagnostics.cs', 'DiagTools.cs', 'NetEvents.cs', 'NetStats.cs', 'AiChat.cs', 'HistoryForm.cs', 'Ai.cs', 'AiLocal.cs', 'ClaudeCode.cs', 'AiSettingsForm.cs', 'Setup.cs') {
+foreach ($f in 'CorbolIp.cs', 'SpeedTest.cs', 'Diagnostics.cs', 'DiagTools.cs', 'NetEvents.cs', 'NetStats.cs', 'AiChat.cs', 'HistoryForm.cs', 'Help.cs', 'Welcome.cs', 'Ai.cs', 'AiLocal.cs', 'ClaudeCode.cs', 'AiSettingsForm.cs', 'Setup.cs') {
     $src = Get-Content -Raw -Encoding UTF8 (Join-Path $root $f)
     foreach ($m in $call.Matches($src)) {
         $k = Join-Literals $m.Groups['en'].Value

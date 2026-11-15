@@ -14,10 +14,10 @@ rem Traduzioni: ogni lang\*.txt (tranne _template.txt) viene incorporato nell'ex
 set LANGRES=
 for %%F in (lang\*.txt) do if /i not "%%~nF"=="_template" call set LANGRES=%%LANGRES%% /resource:"%%F",CorbolIp.lang.%%~nF.txt
 "%CSC%" /nologo /codepage:65001 /target:winexe /optimize+ /out:CorbolIp.exe ^
-  /win32icon:corbolip.ico /resource:corbolip.ico,CorbolIp.corbolip.ico ^
+  /win32icon:corbolip.ico /resource:corbolip.ico,CorbolIp.corbolip.ico /resource:res\welcome-widget-it.png,CorbolIp.welcome-widget-it.png /resource:res\welcome-widget-en.png,CorbolIp.welcome-widget-en.png ^
   /r:System.Windows.Forms.dll /r:System.Drawing.dll /r:System.Core.dll /r:System.Web.Extensions.dll /r:System.Security.dll /r:System.IO.Compression.dll /r:System.IO.Compression.FileSystem.dll ^
   /r:"%WPF%\PresentationFramework.dll" /r:"%WPF%\PresentationCore.dll" /r:"%WPF%\WindowsBase.dll" /r:System.Xaml.dll ^
-  CorbolIp.cs SpeedTest.cs Diagnostics.cs DiagTools.cs NetEvents.cs NetStats.cs AiChat.cs HistoryForm.cs Ai.cs AiLocal.cs ClaudeCode.cs AiSettingsForm.cs Anon.cs Version.cs Lang.cs OldApp.cs TaskbarButton.cs %LANGRES%
+  CorbolIp.cs SpeedTest.cs Diagnostics.cs DiagTools.cs NetEvents.cs NetStats.cs AiChat.cs HistoryForm.cs Help.cs Welcome.cs Ai.cs AiLocal.cs ClaudeCode.cs AiSettingsForm.cs Anon.cs Version.cs Lang.cs OldApp.cs TaskbarButton.cs %LANGRES%
 if errorlevel 1 (
   echo Compilazione fallita.
   exit /b 1

@@ -173,7 +173,8 @@ namespace CorbolIp
             AcceptButton = btnOk;
             CancelButton = btnCancel;
 
-            Controls.AddRange(new Control[] { chkOn, rLocal, rClaude, rClaudeCode, rOpenAi, chkAnon, btnTest, lblTest, btnOk, btnCancel });
+            Controls.AddRange(new Control[] { chkOn, rLocal, rClaude, rClaudeCode, rOpenAi, chkAnon, btnTest, lblTest, btnOk, btnCancel,
+                                              Help.Button(this, Help.Assistant, new Point(L0 + 470 - 234, y)) });
             Controls.AddRange(ccCtl.ToArray());
             Controls.AddRange(localCtl.ToArray());
             Controls.AddRange(claudeCtl.ToArray());

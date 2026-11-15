@@ -630,6 +630,8 @@ namespace CorbolIp
             });
             menu.Items.Add(miUpd);
             menu.Items.Add(new ToolStripSeparator());
+            menu.Items.Add(Mi("Guida", "Help", delegate { Help.Open(Help.Guide); }));
+            menu.Items.Add(Mi("Benvenuto...", "Welcome tour...", delegate { ShowWelcome(); }));
             menu.Items.Add(Mi("Informazioni su CorbolIp", "About CorbolIp", delegate { AboutForm.ShowOnce(tray.Icon); }));
             menu.Items.Add(Mi("Esci", "Exit", delegate { Close(); }));
             ContextMenuStrip = menu;
@@ -710,6 +712,14 @@ namespace CorbolIp
             if (startCmd == "topmost") Load += delegate { SetTopMost(true); SaveSettings(); };
 
             Load += delegate { UpdateJumpList(); };
+            // Presentazione al primo avvio, un paio di secondi dopo che il widget è comparso
+            if (!welcomeShown)
+                Load += delegate
+                {
+                    var wt = new WinTimer { Interval = 2000 };
+                    wt.Tick += delegate { wt.Stop(); wt.Dispose(); ShowWelcome(); };
+                    wt.Start();
+                };
             Load += delegate
             {
                 taskbarBtn = new TaskbarButton(this, "CorbolIp", Icon, BringToFront, Close);
@@ -1132,6 +1142,14 @@ namespace CorbolIp
             tray.ShowBalloonTip(10000, L.F("{0}: rete peggio del solito", "{0}: network worse than usual", alert.Label),
                                 alert.Text + "\n" + L.T("Clicca per vedere lo storico.", "Click to see the history."), ToolTipIcon.Warning);
             balloonIsHistory = true;
+        }
+
+        bool welcomeShown;   // la presentazione è già comparsa una volta (setting welcome=1)
+
+        void ShowWelcome()
+        {
+            if (!welcomeShown) { welcomeShown = true; SaveSettings(); }
+            WelcomeForm.ShowOnce(tray.Icon, () => pingInterval, v => { SetPingInterval(v); SaveSettings(); });
         }
 
         void ShowHistory()
@@ -2051,6 +2069,7 @@ namespace CorbolIp
                     if (d.TryGetValue("updates", out v)) autoUpdate = v == "1";
                     if (d.TryGetValue("events", out v)) NetEvents.Enabled = v != "0";
                     if (d.TryGetValue("quality", out v)) NetStats.Enabled = v != "0";
+                    welcomeShown = d.ContainsKey("welcome");
                     if (d.TryGetValue("qualityalert", out v)) NetStats.Alerts = v != "0";
                     if (d.TryGetValue("speedtest", out v)) speedServer = v;
                     if (d.TryGetValue("theme", out v) && (v == "auto" || v == "dark" || v == "light")) theme = v;
@@ -2100,6 +2119,7 @@ namespace CorbolIp
                 sb.Append("updates=").Append(autoUpdate ? "1" : "0").Append('\n');
                 sb.Append("events=").Append(NetEvents.Enabled ? "1" : "0").Append('\n');
                 sb.Append("quality=").Append(NetStats.Enabled ? "1" : "0").Append('\n');
+                if (welcomeShown) sb.Append("welcome=1").Append('\n');
                 sb.Append("qualityalert=").Append(NetStats.Alerts ? "1" : "0").Append('\n');
                 sb.Append("speedtest=").Append(speedServer).Append('\n');
                 foreach (var kv in Settings.Values.OrderBy(k => k.Key)) sb.Append(kv.Key).Append('=').Append(kv.Value).Append('\n');
