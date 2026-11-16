@@ -1,6 +1,6 @@
 # Statistiche CorbolIp
 
-Aggiornato il 2026-11-15 (UTC) dalla GitHub Action *Statistiche download*.
+Aggiornato il 2026-11-16 (UTC) dalla GitHub Action *Statistiche download*.
 
 ## Download totali per file
 
@@ -21,15 +21,17 @@ Aggiornato il 2026-11-15 (UTC) dalla GitHub Action *Statistiche download*.
 | v1.3.0 | AppIP-Setup-1.3.0.exe | 3 |
 | v1.2.1 | AppIP-Setup-1.2.1.exe | 3 |
 | v1.2.0 | AppIP-Setup-1.2.0.exe | 3 |
+| v1.10.0 | CorbolIp-Setup-1.10.0.exe | 2 |
 | v1.1.1 | AppIP-Setup-1.1.1.exe | 3 |
 | v1.1.0 | AppIP-Setup-1.1.0.exe | 3 |
 | v1.0.1 | AppIP-Setup-1.0.1.exe | 2 |
-| | **Totale** | **53** |
+| | **Totale** | **55** |
 
 ## Nuovi download per giorno (ultimi 30 giorni)
 
 | Giorno | Nuovi | Totale |
 |---|---:|---:|
+| 2026-11-16 | 2 | 55 |
 | 2026-11-15 | 2 | 53 |
 | 2026-11-14 | 3 | 51 |
 | 2026-11-13 | 20 | 48 |
