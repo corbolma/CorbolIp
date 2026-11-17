@@ -202,16 +202,12 @@ namespace CorbolIp.Setup
         }
 
         // Icone fissate alla barra delle applicazioni che aprono l'exe col nome vecchio: ora aprono quello nuovo
-        // (stesso AppUserModelID, quindi l'icona fissata resta quella della finestra aperta).
-        // Il collegamento fissato si chiama ancora AppIP.lnk e quel nome compare nel menu dell'icona: non si
-        // rinomina il file (la barra lo ricorda per nome e l'icona sparirebbe), gli si dà invece il nome da mostrare
-        // in desktop.ini, come fa Windows per "File Explorer.lnk" nella stessa cartella.
+        // (stesso AppUserModelID, quindi l'icona fissata resta quella della finestra aperta)
         static void RetargetPins()
         {
             string dir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
                 @"Microsoft\Internet Explorer\Quick Launch\User Pinned\TaskBar");
             if (!Directory.Exists(dir)) return;
-            bool renamed = false;
             foreach (var lnk in Directory.GetFiles(dir, "*.lnk"))
             {
                 IShellLinkW link = null;
@@ -222,49 +218,18 @@ namespace CorbolIp.Setup
                     pf.Load(lnk, 2 /* STGM_READWRITE */);
                     var sb = new System.Text.StringBuilder(1024);
                     link.GetPath(sb, sb.Capacity, IntPtr.Zero, 0);
-                    string target = sb.ToString();
-                    if (string.Equals(target, OldApp.ExePath, StringComparison.OrdinalIgnoreCase))
+                    if (string.Equals(sb.ToString(), OldApp.ExePath, StringComparison.OrdinalIgnoreCase))
                     {
                         link.SetPath(ExePath);
                         link.SetWorkingDirectory(InstallDir);
                         link.SetIconLocation(ExePath, 0);
                         pf.Save(lnk, true);
-                        target = ExePath;
                     }
-                    if (string.Equals(target, ExePath, StringComparison.OrdinalIgnoreCase)
-                        && !string.Equals(Path.GetFileNameWithoutExtension(lnk), "CorbolIp", StringComparison.OrdinalIgnoreCase))
-                        renamed |= SetDisplayName(dir, Path.GetFileName(lnk), "CorbolIp");
                 }
                 catch { }
                 finally { if (link != null) Marshal.FinalReleaseComObject(link); }
             }
-            if (renamed) try { SHChangeNotify(0x08000000 /* SHCNE_ASSOCCHANGED */, 0, IntPtr.Zero, IntPtr.Zero); } catch { }
         }
-
-        // Nome mostrato per un file della cartella ([LocalizedFileNames] in desktop.ini, che resta nascosto e di sistema;
-        // la cartella dei collegamenti fissati è già di sola lettura, condizione perché Windows legga desktop.ini)
-        static bool SetDisplayName(string dir, string fileName, string displayName)
-        {
-            string ini = Path.Combine(dir, "desktop.ini");
-            var cur = new System.Text.StringBuilder(260);
-            GetPrivateProfileString("LocalizedFileNames", fileName, "", cur, cur.Capacity, ini);
-            if (cur.ToString() == displayName) return false;
-            if (File.Exists(ini)) File.SetAttributes(ini, FileAttributes.Normal);
-            bool ok = WritePrivateProfileString("LocalizedFileNames", fileName, displayName, ini);
-            if (File.Exists(ini)) File.SetAttributes(ini, FileAttributes.Hidden | FileAttributes.System);
-            var di = new DirectoryInfo(dir);
-            if ((di.Attributes & (FileAttributes.ReadOnly | FileAttributes.System)) == 0) di.Attributes |= FileAttributes.ReadOnly;
-            return ok;
-        }
-
-        [DllImport("kernel32.dll", CharSet = CharSet.Unicode)]
-        static extern bool WritePrivateProfileString(string section, string key, string value, string file);
-
-        [DllImport("kernel32.dll", CharSet = CharSet.Unicode)]
-        static extern int GetPrivateProfileString(string section, string key, string def, System.Text.StringBuilder ret, int size, string file);
-
-        [DllImport("shell32.dll")]
-        static extern void SHChangeNotify(int eventId, uint flags, IntPtr item1, IntPtr item2);
 
         // Deve coincidere con Program.AppUserModelId in CorbolIp.cs
         const string AppUserModelId = "AppIP.Widget"; // come prima del cambio di nome: le icone già fissate alla barra restano della stessa app
