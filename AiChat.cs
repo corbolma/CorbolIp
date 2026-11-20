@@ -236,7 +236,7 @@ namespace CorbolIp
             SetHostEnabled(false);
             ShowAi(head + (prov == LocalAi.Instance && !LocalAi.Instance.Running
                 ? L.T("Avvio dell'assistente locale: la prima volta può richiedere fino a un minuto...", "Starting the local assistant: the first time it can take up to a minute...")
-                : L.F("{0} sta scrivendo...", "{0} is writing...", prov.Name)));
+                : L.F("{0} sta scrivendo...", "{0} is writing...", ClaudeCodeProvider.DisplayNameOf(prov))));
 
             // Nel riquadro: il testo dell'assistente e, man mano, i controlli che esegue ("» ping 8.8.8.8 → ...")
             var acc = new StringBuilder();

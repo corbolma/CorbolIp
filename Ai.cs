@@ -648,6 +648,8 @@ namespace CorbolIp
 
         // Claude Code: vuoto = modello predefinito dell'account; altrimenti "opus", "sonnet", "haiku" o un nome completo
         public static string ClaudeCodeModel { get { return Settings.Get("ai.claudecode.model", ""); } set { Settings.Set("ai.claudecode.model", value); } }
+        // Claude Code: account da usare = cartella di configurazione (CLAUDE_CONFIG_DIR); vuoto = predefinito
+        public static string ClaudeCodeConfig { get { return Settings.Get("ai.claudecode.config", ""); } set { Settings.Set("ai.claudecode.config", value); } }
 
         public static string OpenAiUrl { get { return Settings.Get("ai.openai.url", "https://api.openai.com/v1"); } set { Settings.Set("ai.openai.url", value); } }
         public static string OpenAiKey { get { return Secret.Unprotect(Settings.Get("ai.openai.key", "")); } set { Settings.Set("ai.openai.key", Secret.Protect(value)); } }
@@ -673,7 +675,7 @@ namespace CorbolIp
         public static IAiProvider CurrentProvider()
         {
             if (Provider == Local) return LocalAi.Instance;
-            if (Provider == ClaudeCode) return new ClaudeCodeProvider { Model = ClaudeCodeModel };
+            if (Provider == ClaudeCode) return new ClaudeCodeProvider { Model = ClaudeCodeModel, ConfigDir = ClaudeCodeConfig };
             if (Provider == OpenAi)
             {
                 if (OpenAiModel.Length == 0 || OpenAiUrl.Length == 0) return null;
