@@ -23,6 +23,7 @@ namespace CorbolIp
         protected Button btnExplain, btnTicket, btnNew, btnAsk;
         protected TextBox txtAi, txtQuestion;
         protected LinkLabel lnkSent;
+        protected Label lblService;   // servizio e account in uso, sempre visibile sopra il riquadro delle risposte
         protected CancellationTokenSource aiCts;
         string lastSent;                                            // ultimo testo inviato
         // conversazione con l'assistente: si azzera con Nuova conversazione o quando cambiano i dati
@@ -51,10 +52,12 @@ namespace CorbolIp
             btnExplain = new Button { Text = explainText, Size = new Size(explainW, 30), Location = new Point(16, top), Enabled = false };
             btnTicket = new Button { Text = L.T("Prepara segnalazione", "Write support request"), Size = new Size(170, 30), Location = new Point(24 + explainW, top), Enabled = false };
             btnNew = new Button { Text = L.T("Nuova conversazione", "New conversation"), Size = new Size(160, 30), Location = new Point(202 + explainW, top) };
+            // riga con il servizio e l'account: il riquadro delle risposte si accorcia di quanto serve, la finestra non cambia
+            lblService = new Label { AutoSize = false, AutoEllipsis = true, Location = new Point(16, top + 37), Size = new Size(width, 18), ForeColor = Color.DimGray };
             txtAi = new TextBox
             {
                 Multiline = true, ReadOnly = true, ScrollBars = ScrollBars.Vertical, BackColor = Color.White,
-                Location = new Point(16, top + 38), Size = new Size(width, boxH), ForeColor = Color.DimGray
+                Location = new Point(16, top + 57), Size = new Size(width, boxH - 19), ForeColor = Color.DimGray
             };
             txtQuestion = new TextBox { Multiline = true, ScrollBars = ScrollBars.Vertical, Location = new Point(16, top + 46 + boxH), Size = new Size(width - 96, 52) };
             btnAsk = new Button { Text = L.T("Chiedi", "Ask"), Size = new Size(90, 52), Location = new Point(16 + width - 90, top + 46 + boxH), Enabled = false };
@@ -68,8 +71,18 @@ namespace CorbolIp
                 if (e.KeyCode == Keys.Enter && !e.Shift) { e.SuppressKeyPress = true; Ask(); }   // Maiusc+Invio va a capo
             };
             lnkSent.LinkClicked += delegate { ShowSent(); };
-            Controls.AddRange(new Control[] { btnExplain, btnTicket, btnNew, txtAi, txtQuestion, btnAsk, lnkSent });
+            Controls.AddRange(new Control[] { btnExplain, btnTicket, btnNew, lblService, txtAi, txtQuestion, btnAsk, lnkSent });
+            UpdateService();
+            Activated += delegate { UpdateService(); };   // per esempio dopo un cambio di account nelle impostazioni
             return top + 110 + boxH;
+        }
+
+        protected void UpdateService()
+        {
+            if (lblService == null) return;
+            var p = AiSettings.CurrentProvider();
+            string s = p != null ? ClaudeCodeProvider.DisplayNameOf(p) : L.T("non configurato", "not set up");
+            lblService.Text = L.F("Servizio: {0}", "Service: {0}", s);
         }
 
         protected void SetAiButtons(bool on)
