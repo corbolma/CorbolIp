@@ -172,6 +172,7 @@ namespace CorbolIp.Setup
                 return false;
 
             CloseRunning();
+            if (!silent) StopPingLog();   // prima di cancellare l'exe, che lo spegne
             foreach (var f in new[] { StartMenuLnk, DesktopLnk })
                 try { if (File.Exists(f)) File.Delete(f); } catch { }
             try { using (var k = Registry.CurrentUser.OpenSubKey(RunKey, true)) if (k != null) k.DeleteValue("CorbolIp", false); } catch { }
@@ -199,6 +200,56 @@ namespace CorbolIp.Setup
 
             if (!silent) MessageBox.Show(L.T("CorbolIp è stata disinstallata.", "CorbolIp has been uninstalled."), L.T("Disinstalla CorbolIp", "Uninstall CorbolIp"), MessageBoxButtons.OK, MessageBoxIcon.Information);
             return true;
+        }
+
+        // ---------- registro del firewall per i ping (PingWatch.cs) ----------
+        // L'app lo accende come amministratore e lo fa scrivere in %ProgramData%\<app>\Firewall; è uno solo per il PC e
+        // lo usano sia CorbolSys sia CorbolIp. Disinstallando, se è acceso e l'altra app non c'è, nessuno lo leggerebbe
+        // più: lo spegne l'app stessa (/pinglog off, con la conferma di amministratore), che cancella anche la cartella.
+        const string OtherApp = "CorbolSys";
+
+        static bool PingLogOn()
+        {
+            string data = Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData);
+            var dirs = new[] { "CorbolSys", "CorbolIp" }.Select(a => Path.Combine(Path.Combine(data, a), "Firewall")).ToArray();
+            foreach (var p in new[] { "DomainProfile", "StandardProfile", "PublicProfile" })
+                try
+                {
+                    using (var k = Registry.LocalMachine.OpenSubKey(@"SYSTEM\CurrentControlSet\Services\SharedAccess\Parameters\FirewallPolicy\" + p + @"\Logging"))
+                    {
+                        if (k == null) continue;
+                        bool on = Convert.ToInt32(k.GetValue("LogDroppedPackets", 0)) != 0 || Convert.ToInt32(k.GetValue("LogSuccessfulConnections", 0)) != 0;
+                        string dir = Path.GetDirectoryName(Environment.ExpandEnvironmentVariables(Convert.ToString(k.GetValue("LogFilePath", ""))));
+                        if (on && dirs.Any(d => string.Equals(d, dir, StringComparison.OrdinalIgnoreCase))) return true;
+                    }
+                }
+                catch { }
+            return false;
+        }
+
+        static void StopPingLog()
+        {
+            try
+            {
+                if (!PingLogOn() || !File.Exists(ExePath)) return;
+                string other = Path.Combine(Path.Combine(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Programs"), OtherApp), OtherApp + ".exe");
+                if (File.Exists(other)) return;   // lo usa l'altra app
+                MessageBox.Show(L.T("Il registro del firewall acceso per vedere chi fa ping al PC ora non servirà più: CorbolIp lo spegne. Windows chiederà la conferma di amministratore.",
+                                    "The firewall log turned on to see who pings the PC won't be needed anymore: CorbolIp turns it off. Windows will ask for administrator confirmation."),
+                                L.T("Disinstalla CorbolIp", "Uninstall CorbolIp"), MessageBoxButtons.OK, MessageBoxIcon.Information);
+                bool ok = false;
+                try
+                {
+                    using (var p = Process.Start(new ProcessStartInfo(ExePath, "/pinglog off") { UseShellExecute = true, Verb = "runas" }))
+                        ok = p.WaitForExit(60000) && p.ExitCode == 0;
+                }
+                catch { }   // conferma annullata
+                if (!ok)
+                    MessageBox.Show(L.T("Il registro del firewall è rimasto acceso. Puoi spegnerlo da Sicurezza di Windows > Firewall e protezione della rete > Impostazioni avanzate > Proprietà, scheda di ogni profilo, Registrazione.",
+                                        "The firewall log is still on. You can turn it off in Windows Security > Firewall & network protection > Advanced settings > Properties, tab of each profile, Logging."),
+                                    L.T("Disinstalla CorbolIp", "Uninstall CorbolIp"), MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            }
+            catch { }
         }
 
         // Icone fissate alla barra delle applicazioni che aprono l'exe col nome vecchio: ora aprono quello nuovo

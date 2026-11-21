@@ -39,7 +39,8 @@ namespace CorbolIp
 
         // kind: START, STOP, SLEEP, RESUME, NET (rete collegata o cambiata), NETDOWN (scollegata), IP, WIFI, GW, VPN, PUBIP,
         // GWDOWN / INETDOWN (router o Internet non rispondono al ping), PING (rispondono di nuovo),
-        // QUALITY / QUALITYOK (rete peggio del solito / di nuovo normale, vedi NetStats)
+        // QUALITY / QUALITYOK (rete peggio del solito / di nuovo normale, vedi NetStats),
+        // PINGIN (ping ricevuti da fuori, vedi PingWatch)
         public static void Add(string kind, string text)
         {
             if (!Enabled) return;
@@ -115,6 +116,17 @@ namespace CorbolIp
             return Text(Recent(hours), maxLines, forAi);
         }
 
+        // Per l'assistente: gli indirizzi Internet di chi ha fatto ping non escono dal PC (quelli della rete locale sì)
+        static string HideInternetIps(string text)
+        {
+            return System.Text.RegularExpressions.Regex.Replace(text, @"\b\d{1,3}(?:\.\d{1,3}){3}\b|[0-9A-Fa-f]*:[0-9A-Fa-f:.]*[0-9A-Fa-f]", m =>
+            {
+                System.Net.IPAddress a;
+                if (!System.Net.IPAddress.TryParse(m.Value, out a) || PingWatch.IsLocal(a)) return m.Value;
+                return "[Internet address]";
+            });
+        }
+
         public static string Text(List<Entry> list, int maxLines, bool forAi)
         {
             if (list.Count == 0) return "";
@@ -127,7 +139,7 @@ namespace CorbolIp
             }
             foreach (var e in list)
             {
-                string text = forAi && e.Kind == "PUBIP" ? "public IP address changed" : e.Text;
+                string text = forAi && e.Kind == "PUBIP" ? "public IP address changed" : forAi && e.Kind == "PINGIN" ? HideInternetIps(e.Text) : e.Text;
                 sb.AppendLine(e.Time.ToString(forAi ? "yyyy-MM-dd HH:mm" : "g") + "  " + text);
             }
             return sb.ToString();

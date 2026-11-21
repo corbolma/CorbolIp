@@ -15,6 +15,7 @@ Copy all =
 Speed test... = 
 Network diagnostics... = 
 Network history... = 
+Pings received... = 
 AI assistant... = 
 Event log = 
 Record network events = 

@@ -35,9 +35,16 @@ namespace CorbolIp
         //   (nessuno) / /front  -> mostra il widget e lo porta in primo piano
         //   /topmost            -> attiva/disattiva "Sempre in primo piano"
         //   /exit               -> chiude l'app se è aperta
+        //   /pinglog on|off <SID> -> (come amministratore) accende o spegne il registro del firewall per i ping
         [STAThread]
         static void Main(string[] args)
         {
+            // come amministratore, dalla finestra Ping ricevuti: accende o spegne il registro del firewall (PingWatch.cs)
+            if (args.Length >= 2 && args[0].Equals("/pinglog", StringComparison.OrdinalIgnoreCase))
+            {
+                Environment.Exit(PingWatch.SetLogging(args[1].Equals("on", StringComparison.OrdinalIgnoreCase), args.Length > 2 ? args[2] : null));
+                return;
+            }
             // /demo [light] [vpn] [compact] [en]: finestra con dati fittizi per gli screenshot, indipendente dall'istanza normale
             if (args.Length > 0 && args[0].Equals("/demo", StringComparison.OrdinalIgnoreCase))
             {
@@ -512,6 +519,7 @@ namespace CorbolIp
                 DiagnosticsForm.ShowOnce(tray.Icon, DiagSnapshotNow, demo);
             }));
             menu.Items.Add(Mi("Storico rete...", "Network history...", delegate { ShowHistory(); }));
+            menu.Items.Add(Mi("Ping ricevuti...", "Pings received...", delegate { PingForm.ShowOnce(tray.Icon); }));
             menu.Items.Add(Mi("Assistente AI...", "AI assistant...", delegate { AiSettingsForm.ShowOnce(tray.Icon, null); }));
             var miEvents = Mi("Registro eventi", "Event log", null);
             Toggle(miEvents, "Registra gli eventi di rete", "Record network events", () => NetEvents.Enabled, v =>
@@ -702,6 +710,9 @@ namespace CorbolIp
             LoadSettings();
             Settings.SaveHandler = SaveSettings; // l'assistente AI salva le sue impostazioni nello stesso file
             ThreadPool.QueueUserWorkItem(delegate { NetEvents.Prune(); NetStats.Prune(); });
+            // ping ricevuti dall'esterno: nel registro eventi (con indirizzo se il registro del firewall è acceso)
+            PingWatch.OnPings = text => NetEvents.Add("PINGIN", text);
+            PingWatch.Start();
             SystemEvents.PowerModeChanged += OnPowerModeChanged;
             ApplyLook();
             SetPingInterval(pingInterval);
