@@ -1,6 +1,6 @@
 # Statistiche CorbolIp
 
-Aggiornato il 2026-11-23 (UTC) dalla GitHub Action *Statistiche download*.
+Aggiornato il 2026-11-24 (UTC) dalla GitHub Action *Statistiche download*.
 
 ## Download totali per file
 
@@ -35,6 +35,7 @@ Aggiornato il 2026-11-23 (UTC) dalla GitHub Action *Statistiche download*.
 
 | Giorno | Nuovi | Totale |
 |---|---:|---:|
+| 2026-11-24 | 0 | 65 |
 | 2026-11-23 | 0 | 65 |
 | 2026-11-22 | 2 | 65 |
 | 2026-11-21 | 2 | 63 |
@@ -60,6 +61,7 @@ Aggiornato il 2026-11-23 (UTC) dalla GitHub Action *Statistiche download*.
 
 | Giorno | Visite | Visitatori unici | Clone | Clone unici |
 |---|---:|---:|---:|---:|
+| 2026-11-23 | 0 | 0 | 10 | 5 |
 | 2026-11-22 | 0 | 0 | 14 | 11 |
 | 2026-11-21 | 0 | 0 | 21 | 11 |
 | 2026-11-20 | 0 | 0 | 14 | 8 |
