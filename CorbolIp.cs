@@ -72,6 +72,7 @@ namespace CorbolIp
                 if (cmd == "exit") return; // non era aperta: niente da chiudere
                 Application.EnableVisualStyles();
                 Application.SetCompatibleTextRenderingDefault(false);
+                Corbol.Link.Start("CorbolIp", L.T);   // comandi dalle altre app Corbol (CorbolLink.cs): WidgetForm.StartLink
                 Application.Run(new WidgetForm(cmd));
             }
         }
@@ -521,6 +522,8 @@ namespace CorbolIp
             menu.Items.Add(Mi("Storico rete...", "Network history...", delegate { ShowHistory(); }));
             menu.Items.Add(Mi("Ping ricevuti...", "Pings received...", delegate { PingForm.ShowOnce(tray.Icon); }));
             menu.Items.Add(Mi("Assistente AI...", "AI assistant...", delegate { AiSettingsForm.ShowOnce(tray.Icon, null); }));
+            menu.Items.Add(Corbol.Link.OpenInMenu(L.T("App Corbol", "Corbol apps"), null));
+            if (demoArgs == null) StartLink();
             var miEvents = Mi("Registro eventi", "Event log", null);
             Toggle(miEvents, "Registra gli eventi di rete", "Record network events", () => NetEvents.Enabled, v =>
             {
@@ -1636,6 +1639,13 @@ namespace CorbolIp
                 Primary = p, Vpn = vpn, All = allLines, Host = hostName, Domain = domain,
                 Dns = p != null && p.Dns != "-" ? p.Dns : "", NetText = BuildText
             };
+        }
+
+        // Dalle altre app Corbol: status = lo stesso testo di "Copia tutto"
+        void StartLink()
+        {
+            Corbol.Link.Handle("status", delegate (List<string> a) { return BuildText(); });
+            Corbol.Link.Ready();
         }
 
         void CopyAll()
