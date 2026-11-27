@@ -1,6 +1,6 @@
 # Statistiche CorbolIp
 
-Aggiornato il 2026-11-26 (UTC) dalla GitHub Action *Statistiche download*.
+Aggiornato il 2026-11-27 (UTC) dalla GitHub Action *Statistiche download*.
 
 ## Download totali per file
 
@@ -21,6 +21,7 @@ Aggiornato il 2026-11-26 (UTC) dalla GitHub Action *Statistiche download*.
 | v1.3.0 | AppIP-Setup-1.3.0.exe | 3 |
 | v1.2.1 | AppIP-Setup-1.2.1.exe | 3 |
 | v1.2.0 | AppIP-Setup-1.2.0.exe | 3 |
+| v1.13.0 | CorbolIp-Setup-1.13.0.exe | 2 |
 | v1.12.0 | CorbolIp-Setup-1.12.0.exe | 2 |
 | v1.11.1 | CorbolIp-Setup-1.11.1.exe | 2 |
 | v1.11.0 | CorbolIp-Setup-1.11.0.exe | 4 |
@@ -29,12 +30,13 @@ Aggiornato il 2026-11-26 (UTC) dalla GitHub Action *Statistiche download*.
 | v1.1.1 | AppIP-Setup-1.1.1.exe | 3 |
 | v1.1.0 | AppIP-Setup-1.1.0.exe | 3 |
 | v1.0.1 | AppIP-Setup-1.0.1.exe | 2 |
-| | **Totale** | **65** |
+| | **Totale** | **67** |
 
 ## Nuovi download per giorno (ultimi 30 giorni)
 
 | Giorno | Nuovi | Totale |
 |---|---:|---:|
+| 2026-11-27 | 2 | 67 |
 | 2026-11-26 | 0 | 65 |
 | 2026-11-25 | 0 | 65 |
 | 2026-11-24 | 0 | 65 |
@@ -63,6 +65,7 @@ Aggiornato il 2026-11-26 (UTC) dalla GitHub Action *Statistiche download*.
 
 | Giorno | Visite | Visitatori unici | Clone | Clone unici |
 |---|---:|---:|---:|---:|
+| 2026-11-26 | 0 | 0 | 14 | 9 |
 | 2026-11-25 | 0 | 0 | 3 | 2 |
 | 2026-11-24 | 0 | 0 | 21 | 11 |
 | 2026-11-23 | 0 | 0 | 10 | 5 |
